@@ -330,11 +330,10 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     internal func informObserver(of response: PingResponse) {
-        completeRequest(for: Int(response.sequenceIndex))
-        responses.append(response)
-        responsePassthrough.send(response)
-
         currentQueue.sync {
+            completeRequest(for: Int(response.sequenceIndex))
+            responses.append(response)
+            responsePassthrough.send(response)
             responseObserver?(response)
             delegate?.didReceive(response: response)
         }

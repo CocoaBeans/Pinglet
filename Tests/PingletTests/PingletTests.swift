@@ -40,11 +40,19 @@ final class PingletTests: XCTestCase {
         subscriptions.removeAll()
     }
 
-    // func testPassthroughResponsePublisher() throws {
-    //     try waitForDefaultPinglet()
-    //     print("total pings: \(pinglet.responses.count)")
-    //     XCTAssert(pinglet.responses.isEmpty == false)
-    // }
+    func testPassthroughResponsePublisher() throws {
+        var collectedResponses = [PingResponse]()
+        pinglet.responsePublisher
+               .sink(receiveCompletion: { completion in  },
+                     receiveValue: { response in
+                         print(response)
+                         collectedResponses.append(response)
+                     })
+               .store(in: &subscriptions)
+        try waitForDefaultPinglet()
+        print("total pings: \(collectedResponses.count)")
+        XCTAssert(collectedResponses.isEmpty == false)
+    }
 
     func queueTestPinglet() throws -> XCTestExpectation {
         let expectation = XCTestExpectation()

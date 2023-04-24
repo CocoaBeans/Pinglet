@@ -90,7 +90,8 @@ extension Pinglet {
             }
 
             // TODO: This error doesn't make sense anymore because we are checking against an array of pending sequences
-            throw PingError.invalidSequenceIndex(received: sequenceNumberUInt16, expected: sequenceIndex)
+            // throw PingError.invalidSequenceIndex(received: sequenceNumberUInt16, expected: sequenceIndex)
+            return false
         }
         return true
     }

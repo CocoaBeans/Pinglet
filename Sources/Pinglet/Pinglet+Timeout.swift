@@ -12,7 +12,9 @@ extension Pinglet {
     }
 
     internal func pendingRequest(for sequenceID: Int) -> PingRequest? {
-        pendingRequests.first { (request: PingRequest) in request.sequenceIndex == sequenceID }
+        serialProperty.sync {
+            return pendingRequests.first { (request: PingRequest) in request.sequenceIndex == sequenceID }
+        }
     }
 
     internal func invalidateTimer(sequenceID: Int) {
