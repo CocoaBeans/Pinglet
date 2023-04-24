@@ -20,14 +20,17 @@ public class SocketInfo {
 public class Socket2Me: NSObject, ObservableObject {
     public var destination: Destination
     public var timeout: TimeInterval = 30
-    public var dataPublisher: AnyPublisher<Data, SocketError> { dataSubject.eraseToAnyPublisher() }
-    private var dataSubject = PassthroughSubject<Data, SocketError>()
+    public var dataReceivedPublisher: AnyPublisher<Data, SocketError> { dataReceivedSubject.eraseToAnyPublisher() }
+    private var dataReceivedSubject = PassthroughSubject<Data, SocketError>()
+
+    public var dataSentPublisher: AnyPublisher<Data, SocketError> { dataSentSubject.eraseToAnyPublisher() }
+    private var dataSentSubject = PassthroughSubject<Data, SocketError>()
 
     /// Sets the TTL flag on the socket. All requests sent from the socket will include the TTL field set to this value.
     public var timeToLive: Int?
 
     /// Flag to enable socket processing on a background thread
-    public var runInBackground: Bool = false
+    public var runInBackground: Bool = true
 
     /// Detached run loop for handling socket communication off of the main thread
     private var runLoop: CFRunLoop?
@@ -46,6 +49,7 @@ public class Socket2Me: NSObject, ObservableObject {
     public init(destination: Destination) {
         self.destination = destination
         super.init()
+        try? createSocket()
     }
 
     @objc
@@ -60,9 +64,9 @@ public class Socket2Me: NSObject, ObservableObject {
             Thread.detachNewThreadSelector(#selector(createSocketDetached), toTarget: self, with: nil)
         }
         else {
-            // try queue.sync {
+            try queue.sync {
                 try _openNetworkSocket()
-            // }
+            }
         }
     }
 
@@ -82,14 +86,20 @@ public class Socket2Me: NSObject, ObservableObject {
                                 SOCK_DGRAM,
                                 IPPROTO_ICMP,
                                 CFSocketCallBackType.dataCallBack.rawValue,
-                                { socket, type, _, data, info in
-                                    // Socket callback closure
-                                    guard let socket: CFSocket = socket, let info: UnsafeMutableRawPointer = info, let data: UnsafeRawPointer = data
-                                    else { return }
-                                    let socketInfo: SocketInfo = Unmanaged<SocketInfo>.fromOpaque(info).takeUnretainedValue()
+                                { (socket: CFSocket?, type: CFSocketCallBackType, address: CFData?, data: UnsafeRawPointer?, info: UnsafeMutableRawPointer?) in
+                                    guard let address = address as? Data else { return }
 
+                                    // Socket callback closure
+                                    guard let socket: CFSocket = socket,
+                                          let info: UnsafeMutableRawPointer = info,
+                                          let data: UnsafeRawPointer = data
+                                    else { return }
+
+                                    let socketInfo: SocketInfo = Unmanaged<SocketInfo>.fromOpaque(info).takeUnretainedValue()
                                     if (type as CFSocketCallBackType) == CFSocketCallBackType.dataCallBack,
-                                       let socket2Me: Socket2Me = socketInfo.socket2Me {
+                                       let socket2Me: Socket2Me = socketInfo.socket2Me,
+                                       socket == socket2Me.socket,
+                                       address == socket2Me.destination.ipv4Address {
                                         let cfdata: CFData = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue()
                                         socket2Me.socket(socket, didReadData: cfdata as Data)
                                     }
@@ -135,7 +145,7 @@ public class Socket2Me: NSObject, ObservableObject {
     }
 
     private func emitSocketError(error: SocketError) throws {
-        dataSubject.send(completion: .failure(error))
+        dataReceivedSubject.send(completion: .failure(error))
         throw error
     }
 
@@ -170,7 +180,7 @@ public class Socket2Me: NSObject, ObservableObject {
 extension Socket2Me {
     internal func socket(_ socket: CFSocket, didReadData data: Data?) {
         guard let data: Data = data else { return }
-        dataSubject.send(data)
+        dataReceivedSubject.send(data)
     }
 }
 
@@ -189,7 +199,6 @@ extension Socket2Me {
                                                                   address as CFData,
                                                                   data as CFData,
                                                                   self.timeout)
-
                 if socketError != .success {
                     var error: SocketError?
 
@@ -202,13 +211,18 @@ extension Socket2Me {
                         throw error
                     }
                 }
+                else {
+                    self.dataSentSubject.send(data)
+                }
             }
             catch {
                 if let err = error as? SocketError {
-                    self.dataSubject.send(completion: .failure(err))
+                    self.dataSentSubject.send(completion: .failure(err))
+                    self.dataReceivedSubject.send(completion: .failure(err))
                 }
                 else {
-                    self.dataSubject.send(completion: .failure(.dataTransmissionFailed))
+                    self.dataSentSubject.send(completion: .failure(.dataTransmissionFailed))
+                    self.dataReceivedSubject.send(completion: .failure(.dataTransmissionFailed))
                 }
             }
         }

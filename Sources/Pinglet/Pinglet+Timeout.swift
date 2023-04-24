@@ -6,6 +6,7 @@ import Foundation
 
 extension Pinglet {
     internal func completeRequest(for sequenceID: Int) {
+        // print("completeRequest(for: \(sequenceID))")
         invalidateTimer(sequenceID: sequenceID)
         pendingRequests.removeAll { request in request.sequenceIndex == sequenceID }
     }
@@ -15,12 +16,17 @@ extension Pinglet {
     }
 
     internal func invalidateTimer(sequenceID: Int) {
-        guard let timer: Timer = timeoutTimers[sequenceID] else { return }
-        timer.invalidate()
-        timeoutTimers.removeValue(forKey: sequenceID)
+        // print("invalidateTimer(sequenceID: \(sequenceID))")
+        serialProperty.sync {
+            guard let timer: Timer = timeoutTimers[sequenceID] else { return }
+            timer.invalidate()
+            timeoutTimers.removeValue(forKey: sequenceID)
+        }
     }
 
     internal func scheduleTimeout(for request: PingRequest) {
+        // print("scheduleTimeout(for: \(request.sequenceIndex))")
+        pendingRequests.append(request)
         let timer = Timer(timeInterval: configuration.timeoutInterval, repeats: false) { [unowned self] (timer: Timer) in
             let response = PingResponse(identifier: request.identifier,
                                         ipAddress: request.ipAddress,
@@ -34,7 +40,8 @@ extension Pinglet {
             informObserver(of: response)
         }
         RunLoop.current.add(timer, forMode: .common)
-        timeoutTimers[request.id] = timer
-        pendingRequests.append(request)
+        serialProperty.sync {
+            timeoutTimers[request.id] = timer
+        }
     }
 }

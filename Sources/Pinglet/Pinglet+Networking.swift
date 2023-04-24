@@ -50,7 +50,7 @@ extension Pinglet {
                                         ipHeader: ipHeader))
     }
 
-    private func validateResponse(from data: Data) throws -> Bool {
+    internal func validateResponse(from data: Data) throws -> Bool {
         guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size else {
             throw PingError.invalidLength(received: data.count)
         }

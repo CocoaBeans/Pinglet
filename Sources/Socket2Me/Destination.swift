@@ -17,6 +17,11 @@ public struct Destination {
         return String(cString: inet_ntoa(address.sin_addr), encoding: .ascii)
     }
 
+    public init(host: String, ipv4Address: Data) {
+        self.host = host
+        self.ipv4Address = ipv4Address
+    }
+
     /// Resolves the `host`.
     public static func getIPv4AddressFromHost(host: String) throws -> Data {
         var streamError = CFStreamError()

@@ -54,8 +54,8 @@ public class Pinglet: NSObject, ObservableObject {
     public var requestObserver: RequestObserver?
     /// This closure gets called with each ping response.
     public var responseObserver: ResponseObserver?
-    public var responsePublisher: AnyPublisher<PingResponse, Never> { responsePassthrough.eraseToAnyPublisher() }
-    private var responsePassthrough = PassthroughSubject<PingResponse, Never>()
+    public var responsePublisher: AnyPublisher<PingResponse, PingError> { responsePassthrough.eraseToAnyPublisher() }
+    private var responsePassthrough = PassthroughSubject<PingResponse, PingError>()
 
     /// This closure gets called when pinging stops, either when `targetCount` is reached or pinging is stopped explicitly with `stop()` or `halt()`.
     public var finished: FinishedCallback?
@@ -85,17 +85,9 @@ public class Pinglet: NSObject, ObservableObject {
     internal let fingerprint = UUID()
 
     /// User-specified dispatch queue. The `observer` is always called from this queue.
-    private let currentQueue: DispatchQueue
+    internal let currentQueue: DispatchQueue
 
-    /// Detached run loop for handling socket communication off of the main thread
-    private var runLoop: CFRunLoop?
-
-    /// Socket for sending and receiving data.
-    private var socket: CFSocket?
-    /// Socket source
-    private var socketSource: CFRunLoopSource?
-    /// An unmanaged instance of `SocketInfo` used in the current socket's callback. This must be released manually, otherwise it will leak.
-    private var unmanagedSocketInfo: Unmanaged<SocketInfo>?
+    private var socket: Socket2Me?
 
     /// When the current request was sent.
     // private var sequenceStart = Date()
@@ -148,7 +140,7 @@ public class Pinglet: NSObject, ObservableObject {
     private func addAppStateChangeObservers() {
         NotificationCenter.default
             .publisher(for: UIApplication.didEnterBackgroundNotification)
-            .sink { (_: Notification) in
+            .sink { [unowned self] (_: Notification) in
                 if allowBackgroundPinging { return }
                 autoHalted = true
                 haltPinging(resetSequence: false)
@@ -156,7 +148,7 @@ public class Pinglet: NSObject, ObservableObject {
             .store(in: &subscriptions)
         NotificationCenter.default
             .publisher(for: UIApplication.didBecomeActiveNotification)
-            .sink { (_: Notification) in
+            .sink { [unowned self] (_: Notification) in
                 if autoHalted {
                     autoHalted = false
                     try? startPinging()
@@ -200,103 +192,102 @@ public class Pinglet: NSObject, ObservableObject {
         try self.init(destination: destination, configuration: configuration, queue: queue)
     }
 
-    private func _createSocket() throws {
-        // Create a socket context...
-        let info = SocketInfo(pinglet: self, identifier: identifier)
-        unmanagedSocketInfo = Unmanaged.passRetained(info)
-        var context = CFSocketContext(version: 0,
-                                      info: unmanagedSocketInfo!.toOpaque(),
-                                      retain: nil,
-                                      release: nil,
-                                      copyDescription: nil)
-
-        // ...and a socket...
-        socket = CFSocketCreate(kCFAllocatorDefault,
-                                AF_INET,
-                                SOCK_DGRAM,
-                                IPPROTO_ICMP,
-                                CFSocketCallBackType.dataCallBack.rawValue,
-                                { socket, type, _, data, info in
-                                    // Socket callback closure
-                                    guard let socket: CFSocket = socket, let info: UnsafeMutableRawPointer = info, let data: UnsafeRawPointer = data
-                                    else { return }
-                                    let socketInfo = Unmanaged<SocketInfo>.fromOpaque(info).takeUnretainedValue()
-
-                                    if (type as CFSocketCallBackType) == CFSocketCallBackType.dataCallBack,
-                                       let pinglet: Pinglet = socketInfo.pinglet {
-                                        let cfdata: CFData = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue()
-                                        pinglet.socket(socket, didReadData: cfdata as Data)
-                                    }
-                                },
-                                &context)
-
-        // Disable SIGPIPE, see issue #15 on GitHub.
-        let handle: CFSocketNativeHandle = CFSocketGetNative(socket)
-        var value: Int32 = 1
-        let err = setsockopt(handle, SOL_SOCKET, SO_NOSIGPIPE, &value, socklen_t(MemoryLayout.size(ofValue: value)))
-        guard err == 0
-        else {
-            throw PingError.socketOptionsSetError(err: err)
-        }
-
-        // Set TTL
-        if var ttl = configuration.timeToLive {
-            let err = setsockopt(handle, IPPROTO_IP, IP_TTL, &ttl, socklen_t(MemoryLayout.size(ofValue: ttl)))
-            guard err == 0
-            else {
-                throw PingError.socketOptionsSetError(err: err)
-            }
-        }
-
-        // ...and add it to the current run loop.
-        socketSource = CFSocketCreateRunLoopSource(nil, socket, 0)
-        if let runLoop = CFRunLoopGetCurrent(),
-           runLoop != CFRunLoopGetMain() {
-            self.runLoop = runLoop
-            CFRunLoopAddSource(runLoop, socketSource, .commonModes)
-            // If we are not on the main run loop we have to run the loop to schedule timers and network sockets
-            CFRunLoopRun()
-        }
-        else {
-            CFRunLoopAddSource(CFRunLoopGetMain(), socketSource, .commonModes)
-        }
-    }
-
-    @objc
-    private func createSocketDetached() {
-        try? _createSocket()
-    }
-
     /// Initializes a CFSocket.
     /// - Throws: If setting a socket options flag fails, throws a `PingError.socketOptionsSetError(:)`.
     private func createSocket() throws {
-        if runInBackground {
-            Thread.detachNewThreadSelector(#selector(createSocketDetached), toTarget: self, with: nil)
-        }
-        else {
-            try serial.sync {
-                try _createSocket()
-            }
-        }
+        socket = Socket2Me(destination: destination)
+        createDataSentPipeline()
+        createDataReceivedPipeline()
+    }
+
+    private func createDataSentPipeline() {
+        socket?.dataSentPublisher
+               .tryMap { (data: Data) -> ICMPHeader in
+                   try ICMPHeader.from(data: data)
+               }
+               .mapError { error -> PingError in
+                   switch error {
+                   case let pingError as PingError:
+                       return pingError
+                   default:
+                       return .generic(error)
+                   }
+               }
+               .sink(receiveCompletion: { completion in
+                   print("dataSentPublisher.receiveCompletion: \(completion)")
+               },
+                     receiveValue: { (header: ICMPHeader) in
+                         let identifier = header.identifierToHost
+                         let sequenceIndex = header.sequenceNumberToHost
+                         self.delegate?.didSend(identifier: identifier, sequenceIndex: Int(sequenceIndex))
+                         self.requestObserver?(self.identifier, Int(sequenceIndex))
+                     })
+               .store(in: &subscriptions)
+    }
+
+    private func createDataReceivedPipeline() {
+        socket?.dataReceivedPublisher
+               .removeDuplicates()
+               .tryCompactMap { (data: Data) in
+                   var sequence: UInt16? = .none
+                   var id: UInt16? = .none
+                   var validationError: PingError?
+
+                   do {
+                       let _: Bool = try self.validateResponse(from: data)
+                       let icmp: ICMPHeader = try ICMPHeader.from(data: data)
+                       sequence = icmp.sequenceNumberToHost
+                       id = icmp.identifierToHost
+                   }
+                   catch {
+                       switch error {
+                       case let pingError as PingError:
+                           validationError = pingError
+                       default:
+                           validationError = PingError.generic(error)
+                       }
+                   }
+                   let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
+
+                   // // Get the request from the sequence index of the echoed ICMP Packet
+                   guard id == self.identifier else { return nil }
+                   guard let sequenceIndex: UInt16 = sequence,
+                         let request: PingRequest = self.pendingRequest(for: Int(sequenceIndex)) else {
+                       print("Could not look up pending request for sequenceIndex: \(String(describing: sequence))")
+                       return nil
+                   }
+
+                   return PingResponse(identifier: request.identifier,
+                                       ipAddress: request.ipAddress,
+                                       sequenceIndex: request.sequenceIndex,
+                                       trueSequenceIndex: request.trueSequenceIndex,
+                                       duration: request.timeIntervalSinceStart,
+                                       error: validationError,
+                                       byteCount: data.count,
+                                       ipHeader: ipHeader)
+               }
+               .mapError { error -> PingError in
+                   switch error {
+                   case let pingError as PingError:
+                       return pingError
+                   default:
+                        return .generic(error)
+                   }
+               }
+               .sink(receiveCompletion: { (completion: Subscribers.Completion<Error>) in
+                   print("receiveCompletion: \(completion)")
+               },
+                     receiveValue: { (response: PingResponse) in
+                         self.informObserver(of: response)
+                     })
+               .store(in: &subscriptions)
     }
 
     // MARK: - Tear-down
 
     private func tearDown() {
-        if socketSource != nil {
-            CFRunLoopSourceInvalidate(socketSource)
-            socketSource = nil
-        }
-        if socket != nil {
-            CFSocketInvalidate(socket)
-            socket = nil
-        }
-        if runLoop != nil {
-            CFRunLoopStop(runLoop)
-            runLoop = nil
-        }
-        unmanagedSocketInfo?.release()
-        unmanagedSocketInfo = nil
+        socket = nil
+
         pendingRequests.removeAll()
         timeoutTimers.forEach { key, timer in
             timer.invalidate()
@@ -316,71 +307,30 @@ public class Pinglet: NSObject, ObservableObject {
         set { serialProperty.sync { _isPinging = newValue } }
     }
 
-    private func sendPing(request: PingRequest) {
-        serial.async {
-            self.scheduleTimeout(for: request)
-
-            do {
-                let address = self.destination.ipv4Address
-                let icmpPackage: Data = try self.createICMPPackage(identifier: UInt16(request.identifier),
-                                                                   sequenceNumber: UInt16(request.sequenceIndex))
-
-                guard let socket: CFSocket = self.socket else { return }
-                let socketError: CFSocketError = CFSocketSendData(socket,
-                                                                  address as CFData,
-                                                                  icmpPackage as CFData,
-                                                                  self.configuration.timeoutInterval)
-
-                self.delegate?.didSend(identifier: request.identifier, sequenceIndex: Int(request.trueSequenceIndex))
-                self.requestObserver?(request.identifier, Int(request.trueSequenceIndex))
-
-                if socketError != .success {
-                    var error: PingError?
-
-                    switch socketError {
-                    case .error: error = .requestError
-                    case .timeout: error = .requestTimeout
-                    default: break
-                    }
-                    let response = PingResponse(request: request,
-                                                error: error,
-                                                byteCount: nil,
-                                                ipHeader: nil)
-
-                    self.erroredIndices.append(Int(request.sequenceIndex))
-                    self.informObserver(of: response)
-                }
-            }
-            catch {
-                let pingError: PingError
-                if let err = error as? PingError {
-                    pingError = err
-                }
-                else {
-                    pingError = .packageCreationFailed
-                }
-                let response = PingResponse(request: request,
-                                            error: pingError,
-                                            byteCount: nil,
-                                            ipHeader: nil)
-                self.erroredIndices.append(Int(request.sequenceIndex))
-                // self.isPinging = false
-                self.informObserver(of: response)
-            }
+    private func sendPing(request: PingRequest)  {
+        guard let icmpPackage: Data = try? createICMPPackage(identifier: UInt16(request.identifier),
+                                                             sequenceNumber: UInt16(request.sequenceIndex))
+        else {
+            print("Error creating icmp package!")
+            return
         }
-
+        scheduleTimeout(for: request)
+        socket?.send(data: icmpPackage)
         scheduleNextPing()
     }
 
     private func sendPing() {
         if killSwitch { return }
-        sendPing(request: PingRequest(identifier: identifier,
-                                      ipAddress: destination.ip,
-                                      sequenceIndex: sequenceIndex,
-                                      trueSequenceIndex: trueSequenceIndex))
+        serial.async { [self] in
+            sendPing(request: PingRequest(identifier: identifier,
+                                          ipAddress: destination.ip,
+                                          sequenceIndex: sequenceIndex,
+                                          trueSequenceIndex: trueSequenceIndex))
+        }
     }
 
     internal func informObserver(of response: PingResponse) {
+        completeRequest(for: Int(response.sequenceIndex))
         responses.append(response)
         responsePassthrough.send(response)
 
@@ -446,16 +396,12 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     private let serial = DispatchQueue(label: "SwiftyPing internal", qos: .utility)
-    private let serialProperty = DispatchQueue(label: "SwiftyPing internal property", qos: .utility)
+    internal let serialProperty = DispatchQueue(label: "SwiftyPing internal property", qos: .utility)
 
     private var _killSwitch = false
     internal var killSwitch: Bool {
-        get {
-            serialProperty.sync { _killSwitch }
-        }
-        set {
-            serialProperty.sync { _killSwitch = newValue }
-        }
+        get { serialProperty.sync { _killSwitch } }
+        set { serialProperty.sync { _killSwitch = newValue } }
     }
 
     /// Start pinging the host.

@@ -50,6 +50,17 @@ public struct PingResponse: PingID {
     /// Response IP header.
     public let ipHeader: IPHeader?
 
+    public static func empty() -> PingResponse {
+        PingResponse(identifier: 0,
+                     ipAddress: .none,
+                     sequenceIndex: 0,
+                     trueSequenceIndex: 0,
+                     duration: 0,
+                     error: .none,
+                     byteCount: .none,
+                     ipHeader: .none)
+    }
+
     public init(identifier: UInt16,
                 ipAddress: String?,
                 sequenceIndex: UInt16,

@@ -30,24 +30,36 @@ public struct ICMPHeader {
     var checksum: UInt16
     /// Identifier
     var identifier: UInt16
+
     /// Sequence number
     var sequenceNumber: UInt16
-    var sequenceNumberToHost: UInt16 {
-        CFSwapInt16BigToHost(sequenceNumber)
-    }
+
     /// UUID payload
     var payload: uuid_t
 
+    var identifierToHost: UInt16 {
+        CFSwapInt16BigToHost(identifier)
+    }
+    var sequenceNumberToHost: UInt16 {
+        CFSwapInt16BigToHost(sequenceNumber)
+    }
+
     static func from(data: Data) throws -> ICMPHeader {
-        guard data.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size
+        let icmpHeaderSize = MemoryLayout<ICMPHeader>.size
+        let ipHeaderSize = MemoryLayout<IPHeader>.size
+        guard data.count >= icmpHeaderSize
         else { throw PingError.invalidLength(received: data.count) }
 
-        guard let headerOffset: Int = ICMPHeader.headerOffset(in: data)
-        else { throw PingError.invalidHeaderOffset }
+        if data.count >= ipHeaderSize + icmpHeaderSize {
+            guard let headerOffset: Int = ICMPHeader.headerOffset(in: data)
+            else { throw PingError.invalidHeaderOffset }
 
-        let icmpHeader: ICMPHeader = data.withUnsafeBytes { $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) }
-
-        return icmpHeader
+            return data.withUnsafeBytes { $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) }
+        }
+        else if data.count == icmpHeaderSize {
+            return data.withUnsafeBytes { $0.load(fromByteOffset: 0, as: ICMPHeader.self) }
+        }
+        throw PingError.invalidLength(received: data.count)
     }
 }
 
@@ -81,13 +93,13 @@ extension ICMPHeader {
         return [p.0, p.1, p.2, p.3, p.4, p.5, p.6, p.7, p.8, p.9, p.10, p.11, p.12, p.13, p.14, p.15].map { UInt8($0) }
     }
 
-    internal static func headerOffset(in packet: Data) -> Int? {
-        guard packet.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size else { return nil }
+    internal static func headerOffset(in ipPacket: Data) -> Int? {
+        guard ipPacket.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size else { return nil }
 
-        let ipHeader: IPHeader = packet.withUnsafeBytes({ $0.load(as: IPHeader.self) })
+        let ipHeader: IPHeader = ipPacket.withUnsafeBytes({ $0.load(as: IPHeader.self) })
         if ipHeader.versionAndHeaderLength & 0xF0 == 0x40 && ipHeader.protocol == IPPROTO_ICMP {
             let headerLength = Int(ipHeader.versionAndHeaderLength) & 0x0F * MemoryLayout<UInt32>.size
-            if packet.count >= headerLength + MemoryLayout<ICMPHeader>.size {
+            if ipPacket.count >= headerLength + MemoryLayout<ICMPHeader>.size {
                 return headerLength
             }
         }

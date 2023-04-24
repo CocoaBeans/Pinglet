@@ -5,7 +5,7 @@
 import Foundation
 
 /// Describes all possible errors thrown within `Pinglet`
-public enum PingError: Error, Equatable {
+public enum PingError: Error {
     // Response errors
 
     /// The response took longer to arrive than `configuration.timeoutInterval`.
@@ -37,7 +37,7 @@ public enum PingError: Error, Equatable {
     case addressMemoryError
 
     // Request errors
-    /// An error occured while sending the request.
+    /// An error occurred while sending the request.
     case requestError
     /// The request send timed out. Note that this is not "the" timeout,
     /// that would be `responseTimeout`. This timeout means that
@@ -57,4 +57,6 @@ public enum PingError: Error, Equatable {
     case invalidHeaderOffset
     /// Failed to change socket options, in particular SIGPIPE.
     case socketOptionsSetError(err: Int32)
+
+    case generic(Error)
 }
