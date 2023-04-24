@@ -8,14 +8,20 @@ extension AsyncSequence {
     }
 }
 
+enum PingletTestError {
+    case couldNotQueuePinglet
+}
+
 final class PingletTests: XCTestCase {
 
-    var swiftyPing: Pinglet? = PingletTests.defaultPing
+    var pinglet: Pinglet! = PingletTests.defaultPinglet
 
     private var subscriptions = Set<AnyCancellable>()
+    private let pingRuntime: TimeInterval = 3
+    private let testTimeout: TimeInterval = 11
 
-    static var defaultPing: Pinglet {
-        let config = PingConfiguration(interval: 0.1)
+    static var defaultPinglet: Pinglet {
+        let config = PingConfiguration(interval: 0.25, timeout: 2)
         let ping: Pinglet = try! Pinglet(host: "1.1.1.1",
                                          configuration: config,
                                          queue: DispatchQueue.global(qos: .background))
@@ -25,54 +31,74 @@ final class PingletTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        swiftyPing = Self.defaultPing
+        pinglet = Self.defaultPinglet
     }
 
     override func tearDown() {
         super.tearDown()
-        swiftyPing = nil
+        pinglet = nil
+        subscriptions.removeAll()
     }
 
-    @available(macOS 12.0, iOS 15.0, *)
-    func testSimplePing() async throws {
-        guard let ping: Pinglet = swiftyPing else {
-            XCTAssert(false)
-            return
-        }
+    func testPassthroughResponsePublisher() throws {
+        try waitForDefaultPinglet()
+        print("total pings: \(pinglet.responses.count)")
+        XCTAssert(pinglet.responses.isEmpty == false)
+    }
 
-        // ping.responses
-        //     .publisher
-        //     .collect()
-        //     .sink { pings in
-        //         print("Combine.pings: \(pings)")
-        //     }
-        //     .store(in: &subscriptions)
-
+    func queueTestPinglet() throws -> XCTestExpectation {
         let expectation = XCTestExpectation()
-        var requestTime: Date = Date()
-        ping.requestObserver = { identifier, sequenceIndex in
-            let diff = Date().timeIntervalSince1970 -  requestTime.timeIntervalSince1970
-            let formattedResponseTime = String(format: "%0.2f", diff * 1000)
-            print("id: \(identifier) sequenceIndex: \(sequenceIndex) --> \(formattedResponseTime)ms")
-            requestTime = Date()
-        }
-        ping.responseObserver = { (response: PingResponse) in
-            let _ = Date().timeIntervalSince1970
-            // print("response: \(response)")
-            print("")
-        }
-        try ping.startPinging()
 
+        try pinglet.startPinging()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(5)) {
-            ping.stopPinging()
+        DispatchQueue.main.asyncAfter(deadline: .now() + pingRuntime) {
+            self.pinglet.stopPinging()
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 11)
+        return expectation
+    }
 
-        let pings: [PingResponse] = try await ping.responses.publisher.values.collect()
-        print("ping: \(pings.count)")
+    private func waitForDefaultPinglet() throws {
+        let expectation: XCTestExpectation = try queueTestPinglet()
+        wait(for: [expectation], timeout: testTimeout)
+    }
+
+    func testResponsePublisher() throws {
+        var responses = [PingResponse]()
+        pinglet.$responses
+               .sink { pings in
+                   print("Combine.pings: \(pings.count)")
+                   responses = pings
+               }
+               .store(in: &subscriptions)
+
+        try waitForDefaultPinglet()
+        print("total pings: \(pinglet.responses.count)")
+        XCTAssert(responses.isEmpty == false)
+    }
+
+    func testSimplePing() async throws {
+        var requestTime: Date = Date()
+        pinglet.requestObserver = { identifier, sequenceIndex in
+            let diff = Date().timeIntervalSince1970 -  requestTime.timeIntervalSince1970
+            let formattedResponseTime = String(format: "%0.2f", diff * 1000)
+            print("request->id: \(identifier) sequenceIndex: \(sequenceIndex) --> \(formattedResponseTime)ms")
+            requestTime = Date()
+        }
+        pinglet.responseObserver = { response in
+            if response.duration < 0 {
+                print("")
+            }
+            let formattedResponseTime = String(format: "%0.2f", response.duration * 1000)
+
+            print("respnse<-id: \(response.identifier) sequenceIndex: \(response.sequenceIndex) <-- \(formattedResponseTime)ms totalPings: \(self.pinglet.responses.count)")
+        }
+
+        try waitForDefaultPinglet()
+        let pings: [PingResponse] = pinglet.responses
+        print("total pings: \(pings.count)")
         XCTAssert(pings.isEmpty == false)
     }
+
 }

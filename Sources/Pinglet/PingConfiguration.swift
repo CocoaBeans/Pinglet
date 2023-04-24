@@ -22,7 +22,7 @@ public struct PingConfiguration {
     /// Initializes a `PingConfiguration` object with the given parameters.
     /// - Parameter interval: The time between consecutive pings in seconds. Defaults to 1.
     /// - Parameter timeout: Timeout interval in seconds. Defaults to 5.
-    public init(interval: TimeInterval = 1, with timeout: TimeInterval = 5) {
+    public init(interval: TimeInterval = 1, timeout: TimeInterval = 5) {
         pingInterval = interval
         timeoutInterval = timeout
     }
@@ -30,6 +30,6 @@ public struct PingConfiguration {
     /// - Parameter interval: The time between consecutive pings in seconds.
     /// - Note: Timeout interval will be set to 5 seconds.
     public init(interval: TimeInterval) {
-        self.init(interval: interval, with: 5)
+        self.init(interval: interval, timeout: 5)
     }
 }

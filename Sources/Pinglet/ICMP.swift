@@ -32,8 +32,67 @@ public struct ICMPHeader {
     var identifier: UInt16
     /// Sequence number
     var sequenceNumber: UInt16
+    var sequenceNumberToHost: UInt16 {
+        CFSwapInt16BigToHost(sequenceNumber)
+    }
     /// UUID payload
     var payload: uuid_t
+
+    static func from(data: Data) throws -> ICMPHeader {
+        guard data.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size
+        else { throw PingError.invalidLength(received: data.count) }
+
+        guard let headerOffset: Int = ICMPHeader.headerOffset(in: data)
+        else { throw PingError.invalidHeaderOffset }
+
+        let icmpHeader: ICMPHeader = data.withUnsafeBytes { $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) }
+
+        return icmpHeader
+    }
+}
+
+
+extension ICMPHeader {
+    func computeChecksum(additionalPayload: [UInt8] = []) throws -> UInt16 {
+        let typeCode = Data([type, code]).withUnsafeBytes { $0.load(as: UInt16.self) }
+        var sum: UInt64 = UInt64(typeCode) + UInt64(identifier) + UInt64(sequenceNumber)
+        let payload: [UInt8] = ICMPHeader.convert(payload: payload) + additionalPayload
+
+        guard payload.count % 2 == 0 else { throw PingError.unexpectedPayloadLength }
+
+        var i = 0
+        while i < payload.count {
+            guard payload.indices.contains(i + 1) else { throw PingError.unexpectedPayloadLength }
+            // Convert two 8 byte ints to one 16 byte int
+            sum += Data([payload[i], payload[i + 1]]).withUnsafeBytes { UInt64($0.load(as: UInt16.self)) }
+            i += 2
+        }
+        while sum >> 16 != 0 {
+            sum = (sum & 0xffff) + (sum >> 16)
+        }
+
+        guard sum < UInt16.max else { throw PingError.checksumOutOfBounds }
+
+        return ~UInt16(sum)
+    }
+
+    internal static func convert(payload: uuid_t) -> [UInt8] {
+        let p = payload
+        return [p.0, p.1, p.2, p.3, p.4, p.5, p.6, p.7, p.8, p.9, p.10, p.11, p.12, p.13, p.14, p.15].map { UInt8($0) }
+    }
+
+    internal static func headerOffset(in packet: Data) -> Int? {
+        guard packet.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size else { return nil }
+
+        let ipHeader: IPHeader = packet.withUnsafeBytes({ $0.load(as: IPHeader.self) })
+        if ipHeader.versionAndHeaderLength & 0xF0 == 0x40 && ipHeader.protocol == IPPROTO_ICMP {
+            let headerLength = Int(ipHeader.versionAndHeaderLength) & 0x0F * MemoryLayout<UInt32>.size
+            if packet.count >= headerLength + MemoryLayout<ICMPHeader>.size {
+                return headerLength
+            }
+        }
+        return nil
+    }
 }
 
 /// ICMP echo types
