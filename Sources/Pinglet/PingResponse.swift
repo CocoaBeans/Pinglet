@@ -22,10 +22,10 @@ protocol PingID: Identifiable {
 /// A struct encapsulating a ping request.
 public struct PingRequest: PingID {
     public var id: UInt64 { trueSequenceIndex }
-    var identifier: UInt16
-    var ipAddress: String?
-    var sequenceIndex: UInt16
-    var trueSequenceIndex: UInt64
+    public var identifier: UInt16
+    public var ipAddress: String?
+    public var sequenceIndex: UInt16
+    public var trueSequenceIndex: UInt64
 
     var timestamp = Date()
     var timeIntervalSinceStart: TimeInterval {
@@ -36,10 +36,10 @@ public struct PingRequest: PingID {
 /// A struct encapsulating a ping response.
 public struct PingResponse: PingID {
     public var id: UInt64 { trueSequenceIndex }
-    let identifier: UInt16
-    let ipAddress: String?
-    let sequenceIndex: UInt16
-    let trueSequenceIndex: UInt64
+    public let identifier: UInt16
+    public let ipAddress: String?
+    public let sequenceIndex: UInt16
+    public let trueSequenceIndex: UInt64
 
     /// Roundtrip time.
     public let duration: TimeInterval
