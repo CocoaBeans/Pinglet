@@ -8,6 +8,7 @@ Added features:
 - Background pings: all network activity can be offloaded to a background queue
 - Includes support for pinging when the app is inactive on iOS
 - Conforms to ObservableObject and publishers for Combine pipelines 
+- Multithreaded: Pings are sent and received independently of each other (i.e. you can send another ping before any previous pings have returned)
 
 ### Usage
 ```swift
