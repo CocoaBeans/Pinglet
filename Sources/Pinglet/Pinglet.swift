@@ -9,6 +9,7 @@
 import Combine
 import Darwin
 import Foundation
+import Socket2Me
 
 #if os(iOS)
 import UIKit

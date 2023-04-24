@@ -26,14 +26,14 @@ public struct Destination {
         var data: Data?
         if !status {
             if Int32(streamError.domain) == kCFStreamErrorDomainNetDB {
-                throw PingError.addressLookupError
+                throw SocketError.addressLookupError
             } else {
-                throw PingError.unknownHostError
+                throw SocketError.unknownHostError
             }
         } else {
             var success: DarwinBoolean = false
             guard let addresses = CFHostGetAddressing(cfhost, &success)?.takeUnretainedValue() as? [Data] else {
-                throw PingError.hostNotFound
+                throw SocketError.hostNotFound
             }
 
             for address in addresses {
@@ -45,10 +45,10 @@ public struct Destination {
             }
 
             if data?.count == 0 || data == nil {
-                throw PingError.hostNotFound
+                throw SocketError.hostNotFound
             }
         }
-        guard let returnData = data else { throw PingError.unknownHostError }
+        guard let returnData = data else { throw SocketError.unknownHostError }
         return returnData
     }
 }
