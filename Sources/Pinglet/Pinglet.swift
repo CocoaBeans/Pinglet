@@ -1,10 +1,26 @@
-//
-//  Pinglet.swift
-//  Pinglet
-//
-//  Created by Kevin Ross on 04/23/23.
-//  Copyright © 2023 Kevin Ross. All rights reserved.
-//
+/*
+  Pinglet
+  This project is based on SwiftyPing: https://github.com/samiyr/SwiftyPing
+  Copyright (c) 2023 Kevin Ross
+  
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+  
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+ */
 
 import Combine
 import Darwin
@@ -27,9 +43,9 @@ public protocol PingDelegate {
     func didSend(identifier: UInt16, sequenceIndex: Int)
 }
 
-// MARK: SwiftyPing
+// MARK: Pinglet
 
-/// Class representing socket info, which contains a `SwiftyPing` instance and the identifier.
+/// Class representing socket info, which contains a `Pinglet` instance and the identifier.
 public class SocketInfo {
     public weak var pinglet: Pinglet?
     public let identifier: UInt16
@@ -394,8 +410,8 @@ public class Pinglet: NSObject, ObservableObject {
         }
     }
 
-    private let serial = DispatchQueue(label: "SwiftyPing internal", qos: .utility)
-    internal let serialProperty = DispatchQueue(label: "SwiftyPing internal property", qos: .utility)
+    private let serial = DispatchQueue(label: "Pinglet internal", qos: .utility)
+    internal let serialProperty = DispatchQueue(label: "Pinglet internal property", qos: .utility)
 
     private var _killSwitch = false
     internal var killSwitch: Bool {
