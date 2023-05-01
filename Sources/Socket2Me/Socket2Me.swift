@@ -199,7 +199,9 @@ public class Socket2Me: NSObject, ObservableObject {
 
 extension Socket2Me {
     internal func socket(_ socket: CFSocket, didReadData data: Data?) {
-        guard let data: Data = data else { return }
+        guard let data: Data = data,
+              self.socket == socket
+        else { return }
         dataReceivedSubject.send(data)
     }
 }
