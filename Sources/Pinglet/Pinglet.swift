@@ -290,11 +290,17 @@ public class Pinglet: NSObject, ObservableObject {
                         return .generic(error)
                    }
                }
-               .sink(receiveCompletion: { (completion: Subscribers.Completion<Error>) in
+               .sink(receiveCompletion: { [unowned self] (completion: Subscribers.Completion<Error>) in
+                   switch completion {
+                   case .finished:
+                       print("Socket \(socket) was closed")
+                   case .failure(let reason):
+                       print("Socket \(socket) was closed because: \(reason)")
+                   }
                    print("receiveCompletion: \(completion)")
                },
                      receiveValue: { (response: PingResponse) in
-                         self.informObserver(of: response)
+                         self.informObservers(of: response)
                      })
                .store(in: &subscriptions)
     }
@@ -309,6 +315,7 @@ public class Pinglet: NSObject, ObservableObject {
             timer.invalidate()
         }
         timeoutTimers.removeAll()
+        subscriptions.removeAll()
     }
 
     deinit {
@@ -345,7 +352,7 @@ public class Pinglet: NSObject, ObservableObject {
         }
     }
 
-    internal func informObserver(of response: PingResponse) {
+    internal func informObservers(of response: PingResponse) {
         currentQueue.sync {
             completeRequest(for: Int(response.sequenceIndex))
             responses.append(response)

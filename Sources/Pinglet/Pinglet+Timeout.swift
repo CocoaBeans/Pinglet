@@ -28,12 +28,14 @@ extension Pinglet {
     internal func completeRequest(for sequenceID: Int) {
         // print("completeRequest(for: \(sequenceID))")
         invalidateTimer(sequenceID: sequenceID)
-        pendingRequests.removeAll { request in request.sequenceIndex == sequenceID }
+        serialProperty.sync {
+            pendingRequests.removeAll { (request: PingRequest) in request.sequenceIndex == sequenceID }
+        }
     }
 
     internal func pendingRequest(for sequenceID: Int) -> PingRequest? {
         serialProperty.sync {
-            return pendingRequests.first { (request: PingRequest) in request.sequenceIndex == sequenceID }
+            pendingRequests.first { (request: PingRequest) in request.sequenceIndex == sequenceID }
         }
     }
 
@@ -46,24 +48,29 @@ extension Pinglet {
         }
     }
 
+    internal func informObserversOfTimeout(for request: PingRequest) {
+        let response = PingResponse(identifier: request.identifier,
+                                    ipAddress: request.ipAddress,
+                                    sequenceIndex: request.sequenceIndex,
+                                    trueSequenceIndex: request.trueSequenceIndex,
+                                    duration: -1,
+                                    error: PingError.responseTimeout,
+                                    byteCount: nil,
+                                    ipHeader: nil)
+        erroredIndices.append(Int(request.sequenceIndex))
+        informObservers(of: response)
+    }
+
     internal func scheduleTimeout(for request: PingRequest) {
         // print("scheduleTimeout(for: \(request.sequenceIndex))")
-        pendingRequests.append(request)
         let timer = Timer(timeInterval: configuration.timeoutInterval, repeats: false) { [unowned self] (timer: Timer) in
-            let response = PingResponse(identifier: request.identifier,
-                                        ipAddress: request.ipAddress,
-                                        sequenceIndex: request.sequenceIndex,
-                                        trueSequenceIndex: request.trueSequenceIndex,
-                                        duration: -1,
-                                        error: PingError.responseTimeout,
-                                        byteCount: nil,
-                                        ipHeader: nil)
-            erroredIndices.append(Int(request.sequenceIndex))
-            informObserver(of: response)
+            print("Time-out from timer")
+            informObserversOfTimeout(for: request)
         }
         RunLoop.current.add(timer, forMode: .common)
-        serialProperty.sync {
-            timeoutTimers[request.id] = timer
+        serialProperty.async {
+            self.pendingRequests.append(request)
+            self.timeoutTimers[request.id] = timer
         }
     }
 }

@@ -60,7 +60,7 @@ extension Pinglet {
         }
 
         // Get the request from the sequence index of the echoed ICMP Packet
-        informObserver(of: PingResponse(identifier: request.identifier,
+        informObservers(of: PingResponse(identifier: request.identifier,
                                         ipAddress: request.ipAddress,
                                         sequenceIndex: request.sequenceIndex,
                                         trueSequenceIndex: request.trueSequenceIndex,
