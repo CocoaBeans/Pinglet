@@ -293,9 +293,9 @@ public class Pinglet: NSObject, ObservableObject {
                .sink(receiveCompletion: { [unowned self] (completion: Subscribers.Completion<Error>) in
                    switch completion {
                    case .finished:
-                       print("Socket \(socket) was closed")
+                       print("Socket \(String(describing: socket)) was closed")
                    case .failure(let reason):
-                       print("Socket \(socket) was closed because: \(reason)")
+                       print("Socket \(String(describing: socket)) was closed because: \(reason)")
                    }
                    print("receiveCompletion: \(completion)")
                },
