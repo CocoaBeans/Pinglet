@@ -45,7 +45,7 @@ final class PingletTests: XCTestCase {
 
     static var defaultPinglet: Pinglet {
         let config = PingConfiguration(interval: 0.25, timeout: 1)
-        let ping: Pinglet = try! Pinglet(host: "1.1.1.1",
+        let ping: Pinglet = try! Pinglet(host: "24mountains.com",
                                          configuration: config,
                                          queue: DispatchQueue.global(qos: .background))
         ping.runInBackground = true
@@ -109,7 +109,16 @@ final class PingletTests: XCTestCase {
         XCTAssert(responses.isEmpty == false)
     }
 
-    func testSimplePing() async throws {
+    func testFloodPing() throws {
+        let config = PingConfiguration(interval: 0.001, timeout: pinglet.configuration.timeoutInterval)
+        pinglet = try Pinglet(destination: pinglet.destination, configuration: config)
+        try testSimplePing()
+    }
+
+    func testSimplePing() throws {
+        let formattedInterval = String(format: "%0.2f", pinglet.configuration.pingInterval * 1000)
+        print("Starting ping with \(formattedInterval)ms interval...")
+
         var requestTime: Date = Date()
         pinglet.requestObserver = { identifier, sequenceIndex in
             let diff = Date().timeIntervalSince1970 -  requestTime.timeIntervalSince1970
