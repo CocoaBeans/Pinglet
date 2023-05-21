@@ -67,7 +67,7 @@ extension Pinglet {
             print("Time-out from timer")
             informObserversOfTimeout(for: request)
         }
-        RunLoop.current.add(timer, forMode: .common)
+        RunLoop.main.add(timer, forMode: .common)
         serialProperty.async {
             self.pendingRequests.append(request)
             self.timeoutTimers[request.id] = timer
