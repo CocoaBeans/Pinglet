@@ -1,5 +1,5 @@
 /*
-  Pinglet
+  Socket2Me
   This project is based on SwiftyPing: https://github.com/samiyr/SwiftyPing
   Copyright (c) 2023 Kevin Ross
   

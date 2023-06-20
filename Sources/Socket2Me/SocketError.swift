@@ -1,5 +1,5 @@
 /*
-  Pinglet
+  Socket2Me
   This project is based on SwiftyPing: https://github.com/samiyr/SwiftyPing
   Copyright (c) 2023 Kevin Ross
   
@@ -24,7 +24,7 @@
 
 import Foundation
 
-/// Describes all possible errors thrown within `Pinglet`
+/// Describes all possible errors thrown within `Socket2Me`
 public enum SocketError: Error, Equatable {
     // Response errors
 
@@ -32,7 +32,7 @@ public enum SocketError: Error, Equatable {
     case responseTimeout
 
     // Host resolve errors
-    /// Unknown error occured within host lookup.
+    /// Unknown error occurred within host lookup.
     case unknownHostError
     /// Address lookup failed.
     case addressLookupError
