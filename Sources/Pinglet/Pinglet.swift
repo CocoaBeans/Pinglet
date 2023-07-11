@@ -103,7 +103,7 @@ public class Pinglet: NSObject, ObservableObject {
     /// User-specified dispatch queue. The `observer` is always called from this queue.
     internal let currentQueue: DispatchQueue
 
-    private var socket: Socket2Me?
+    internal var socket: Socket2Me?
 
     /// When the current request was sent.
     // private var sequenceStart = Date()
@@ -353,12 +353,12 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     internal func informObservers(of response: PingResponse) {
-        currentQueue.sync {
-            completeRequest(for: Int(response.sequenceIndex))
-            responses.append(response)
-            responsePassthrough.send(response)
-            responseObserver?(response)
-            delegate?.didReceive(response: response)
+        currentQueue.async {
+            self.completeRequest(for: Int(response.sequenceIndex))
+            self.responses.append(response)
+            self.responsePassthrough.send(response)
+            self.responseObserver?(response)
+            self.delegate?.didReceive(response: response)
         }
     }
 

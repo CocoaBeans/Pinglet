@@ -53,7 +53,7 @@ public class Socket2Me: NSObject, ObservableObject {
     public var runInBackground: Bool = true
 
     /// Detached run loop for handling socket communication off of the main thread
-    private var runLoop: CFRunLoop?
+    public var runLoop: CFRunLoop?
 
     /// Socket for sending and receiving data.
     private var socket: CFSocket?
@@ -62,7 +62,7 @@ public class Socket2Me: NSObject, ObservableObject {
     /// An unmanaged instance of `SocketInfo` used in the current socket's callback. This must be released manually, otherwise it will leak.
     private var unmanagedSocketInfo: Unmanaged<SocketInfo>?
 
-    private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .utility)
+    private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .userInitiated)
 
     private var subscriptions = Set<AnyCancellable>()
 
