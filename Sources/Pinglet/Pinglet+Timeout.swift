@@ -42,7 +42,7 @@ extension Pinglet {
     internal func invalidateTimer(sequenceID: Int) {
         serialProperty.async {
             guard let timer: Timer = self.timeoutTimers[sequenceID] else { return }
-            print("invalidateTimer(sequenceID: \(sequenceID))")
+            // print("invalidateTimer(sequenceID: \(sequenceID))")
             timer.invalidate()
             self.timeoutTimers.removeValue(forKey: sequenceID)
         }
@@ -64,7 +64,7 @@ extension Pinglet {
     internal func scheduleTimeout(for request: PingRequest) {
         // print("scheduleTimeout(for: \(request.sequenceIndex))")
         let timer = Timer(timeInterval: configuration.timeoutInterval, repeats: false) { [weak self] (timer: Timer) in
-            print("Time-out from timer for request: \(request.sequenceIndex)")
+            print("Time-out via timer for request: \(request.sequenceIndex)")
             self?.informObserversOfTimeout(for: request)
         }
 
