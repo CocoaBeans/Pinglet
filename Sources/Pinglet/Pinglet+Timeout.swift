@@ -74,7 +74,7 @@ extension Pinglet {
 
             // If we have an internal socket run loop then we will add the timer to that run loop.
             if let cfRunLoop = self.socket?.runLoop {
-                CFRunLoopAddTimer(cfRunLoop, timer, .commonModes)
+                CFRunLoopAddTimer(cfRunLoop, timer, .default)
             }
             else {
                 RunLoop.main.add(timer, forMode: .default)
