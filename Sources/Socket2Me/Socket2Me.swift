@@ -62,7 +62,7 @@ public class Socket2Me: NSObject, ObservableObject {
     /// An unmanaged instance of `SocketInfo` used in the current socket's callback. This must be released manually, otherwise it will leak.
     private var unmanagedSocketInfo: Unmanaged<SocketInfo>?
 
-    private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .utility)
 
     private var subscriptions = Set<AnyCancellable>()
 
