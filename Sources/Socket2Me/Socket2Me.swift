@@ -151,12 +151,12 @@ public class Socket2Me: NSObject, ObservableObject {
         if let runLoop: CFRunLoop = CFRunLoopGetCurrent(),
            runLoop != CFRunLoopGetMain() {
             self.runLoop = runLoop
-            CFRunLoopAddSource(runLoop, socketSource, .defaultMode)
+            CFRunLoopAddSource(runLoop, socketSource, .commonModes)
             // If we are not on the main run loop we have to run the loop to schedule timers and network sockets
             CFRunLoopRun()
         }
         else {
-            CFRunLoopAddSource(CFRunLoopGetMain(), socketSource, .defaultMode)
+            CFRunLoopAddSource(CFRunLoopGetMain(), socketSource, .commonModes)
         }
     }
     private func emitSocketError(code: Int32) throws {
