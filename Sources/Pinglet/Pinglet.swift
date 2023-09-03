@@ -440,7 +440,7 @@ public class Pinglet: NSObject, ObservableObject {
     /// Stop pinging the host.
     /// - Parameter resetSequence: Controls whether the sequence index should be set back to zero.
     public func stopPinging(resetSequence: Bool = true) {
-        guard isPinging == false else { return }
+        guard isPinging == true else { return }
         killSwitch = true
         isPinging = false
         let count = trueSequenceIndex
