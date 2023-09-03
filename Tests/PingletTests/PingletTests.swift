@@ -95,6 +95,43 @@ final class PingletTests: XCTestCase {
         wait(for: [expectation], timeout: testTimeout)
     }
 
+    func testMultipleStartInOneSession() throws {
+        var responses = [PingResponse]()
+        pinglet.$responses
+                .sink { pings in
+                    print("Combine.pings: \(pings.count)")
+                    responses = pings
+                }
+                .store(in: &subscriptions)
+
+        let expectation = XCTestExpectation()
+
+        print("Ping Start")
+        try pinglet.startPinging()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + pingRuntime) {
+            print("Ping Stop")
+            self.pinglet.stopPinging()
+            expectation.fulfill()
+        }
+
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+            print("Ping Multiple-start")
+            try? self.pinglet.startPinging()
+            try? self.pinglet.startPinging()
+            try? self.pinglet.startPinging()
+            try? self.pinglet.startPinging()
+            try? self.pinglet.startPinging()
+            try? self.pinglet.startPinging()
+            try? self.pinglet.startPinging()
+        }
+        wait(for: [expectation], timeout: testTimeout)
+
+        print("total pings: \(pinglet.responses.count)")
+        XCTAssert(responses.isEmpty == false)
+    }
+
     func testResponsePublisher() throws {
         var responses = [PingResponse]()
         pinglet.$responses
