@@ -121,6 +121,7 @@ public class Pinglet: NSObject, ObservableObject {
 
     internal var erroredIndices = [Int]()
 
+    private var pingTimer: Timer?
     internal var cancellables = Set<AnyCancellable>()
     internal var notificationCancellables = Set<AnyCancellable>()
     internal var timeoutTimers = [AnyHashable: Timer]()
@@ -210,6 +211,7 @@ public class Pinglet: NSObject, ObservableObject {
     /// Initializes a CFSocket.
     /// - Throws: If setting a socket options flag fails, throws a `PingError.socketOptionsSetError(:)`.
     private func createSocket() throws {
+        // Log.ping.trace(#function)
         socket = Socket2Me(destination: destination)
         socket?.runInBackground = runInBackground
         createDataSentPipeline()
@@ -242,6 +244,7 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     private func createDataReceivedPipeline() {
+        // Log.ping.trace(#function)
         socket?.dataReceivedPublisher
             .removeDuplicates()
             .tryCompactMap { (data: Data) in
@@ -299,8 +302,9 @@ public class Pinglet: NSObject, ObservableObject {
                       }
                       print("receiveCompletion: \(completion)")
                   },
-                  receiveValue: { [weak self] (response: PingResponse) in
-                      self?.informObservers(of: response)
+                  receiveValue: { [unowned self] (response: PingResponse) in
+                      // Log.ping.trace("Socket sink receiveValue: \(response.sequenceIndex)")
+                      informObservers(of: response)
                   })
             .store(in: &cancellables)
     }
@@ -308,21 +312,26 @@ public class Pinglet: NSObject, ObservableObject {
     // MARK: - Tear-down
 
     private func tearDown() {
-        print("Pinglet: tearDown")
+        // Log.ping.trace(#function)
+
+        pingTimer?.invalidate()
+        cancellables.removeAll()
+
         socket?.tearDown()
         socket = nil
 
-        pendingRequests.removeAll()
-        timeoutTimers.forEach { _, timer in
-            timer.invalidate()
-        }
-        timeoutTimers.removeAll()
+        serialProperty.sync {
+            pendingRequests.removeAll()
+            timeoutTimers.forEach { _, timer in
+                timer.invalidate()
+            }
+            timeoutTimers.removeAll()
 
-        // Skip clearing notification listeners if we have been stopped because we're in the background.
-        if autoHalted == false {
-            notificationCancellables.removeAll()
+            // Skip clearing notification listeners if we have been stopped because we're in the background.
+            if autoHalted == false {
+                notificationCancellables.removeAll()
+            }
         }
-        cancellables.removeAll()
     }
 
     deinit {
@@ -338,6 +347,7 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     private func sendPing(request: PingRequest) {
+        // Log.ping.trace(#function)
         guard let icmpPackage: Data = try? createICMPPackage(identifier: UInt16(request.identifier),
                                                              sequenceNumber: UInt16(request.sequenceIndex))
         else {
@@ -350,6 +360,7 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     private func sendPing() {
+        // Log.ping.trace(#function)
         if killSwitch { return }
         serial.async { [self] in
             sendPing(request: PingRequest(identifier: identifier,
@@ -360,10 +371,16 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     internal func informObservers(of response: PingResponse) {
+        // Log.ping.trace(#function)
+        // Complete the request on the Pinglet serialProperty queue
+        completeRequest(for: Int(response.sequenceIndex))
+        serialProperty.sync {
+            responses.append(response)
+        }
+
+        // Then call the completion handlers on the queue set by the API client
+        responsePassthrough.send(response)
         currentQueue.async {
-            self.completeRequest(for: Int(response.sequenceIndex))
-            self.responses.append(response)
-            self.responsePassthrough.send(response)
             self.responseObserver?(response)
             self.delegate?.didReceive(response: response)
         }
@@ -387,6 +404,7 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     private func scheduleNextPing() {
+        // Log.ping.trace(#function)
         if isTargetCountReached() {
             if configuration.haltAfterTarget {
                 stopPinging()
@@ -395,11 +413,13 @@ public class Pinglet: NSObject, ObservableObject {
                 informFinishedStatus(trueSequenceIndex)
             }
         }
-        if canSchedulePing() {
-            serial.asyncAfter(deadline: .now() + configuration.pingInterval) {
+        else if canSchedulePing() {
+            let timer = Timer(timeInterval: configuration.pingInterval, repeats: false) { _ in
                 self.incrementSequenceIndex()
                 self.sendPing()
             }
+            pingTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
         }
     }
 
@@ -435,11 +455,17 @@ public class Pinglet: NSObject, ObservableObject {
 
     /// Start pinging the host.
     public func startPinging() throws {
-        guard isPinging == false else {
-            return
-        }
+        // Log.ping.trace(#function)
+        guard isPinging == false else { return }
+        isPinging = true
+
         if socket == nil {
-            try createSocket()
+            do { try createSocket() }
+            catch {
+                // Turn off the isPinging flag if we fail to create a socket
+                isPinging = false
+                throw error
+            }
         }
         killSwitch = false
         isPinging = true
@@ -463,6 +489,7 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     private func incrementSequenceIndex() {
+        // Log.ping.trace(#function)
         // Handle overflow gracefully
         if sequenceIndex >= UInt16.max { sequenceIndex = 0 }
         else { sequenceIndex += 1 }

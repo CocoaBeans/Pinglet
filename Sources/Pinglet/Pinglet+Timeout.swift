@@ -26,7 +26,7 @@ import Foundation
 
 extension Pinglet {
     internal func completeRequest(for sequenceID: Int) {
-        // print("completeRequest(for: \(sequenceID))")
+        // Log.ping.trace("completeRequest(for: \(sequenceID))")
         invalidateTimer(sequenceID: sequenceID)
         serialProperty.async {
             self.pendingRequests.removeAll { (request: PingRequest) in request.sequenceIndex == sequenceID }
@@ -42,13 +42,14 @@ extension Pinglet {
     internal func invalidateTimer(sequenceID: Int) {
         serialProperty.async {
             guard let timer: Timer = self.timeoutTimers[sequenceID] else { return }
-            // print("invalidateTimer(sequenceID: \(sequenceID))")
+            // Log.ping.debug("invalidateTimer(sequenceID: \(sequenceID))")
             timer.invalidate()
             self.timeoutTimers.removeValue(forKey: sequenceID)
         }
     }
 
     internal func informObserversOfTimeout(for request: PingRequest) {
+        // Log.ping.trace(#function)
         let response = PingResponse(identifier: request.identifier,
                                     ipAddress: request.ipAddress,
                                     sequenceIndex: request.sequenceIndex,
@@ -62,7 +63,7 @@ extension Pinglet {
     }
 
     internal func scheduleTimeout(for request: PingRequest) {
-        // print("scheduleTimeout(for: \(request.sequenceIndex))")
+        // Log.ping.debug("scheduleTimeout(for: \(request.sequenceIndex))")
         let timer = Timer(timeInterval: configuration.timeoutInterval, repeats: false) { [weak self] (timer: Timer) in
             print("Time-out via timer for request: \(request.sequenceIndex)")
             self?.informObserversOfTimeout(for: request)

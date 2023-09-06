@@ -44,7 +44,7 @@ final class PingletTests: XCTestCase {
     private let testTimeout: TimeInterval = 11
 
     static var defaultPinglet: Pinglet {
-        let config = PingConfiguration(interval: 0.25, timeout: 1)
+        let config = PingConfiguration(interval: 1, timeout: 3)
         let ping: Pinglet = try! Pinglet(host: "1.1.1.1",
                                          configuration: config,
                                          queue: DispatchQueue.global(qos: .background))
@@ -83,7 +83,10 @@ final class PingletTests: XCTestCase {
         pinglet.responsePublisher
                 .sink(receiveCompletion: { completion in  },
                         receiveValue: { response in
-                            print(response)
+                            print("response.duration: \(response.duration)")
+                            if response.duration < 0 {
+                                print("BREAK")
+                            }
                             collectedResponses.append(response)
                         })
                 .store(in: &subscriptions)
@@ -171,7 +174,6 @@ final class PingletTests: XCTestCase {
             expectation.fulfill()
         }
 
-
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
             print("Ping Multiple-start")
             try? self.pinglet.startPinging()
@@ -224,8 +226,8 @@ final class PingletTests: XCTestCase {
                 print("")
             }
             let formattedResponseTime = String(format: "%0.2f", response.duration * 1000)
-
-            print("respnse<-id: \(response.identifier) sequenceIndex: \(response.sequenceIndex) <-- \(formattedResponseTime)ms Round-Trip \tTotalPings: \(self.pinglet.responses.count)")
+            let count = self.pinglet.responses.count
+            print("respnse<-id: \(response.identifier) sequenceIndex: \(response.sequenceIndex) <-- \(formattedResponseTime)ms Round-Trip \tTotalPings: \(count)")
         }
 
         try waitForDefaultPinglet()

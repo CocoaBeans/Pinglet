@@ -169,17 +169,17 @@ public class Socket2Me: NSObject, ObservableObject {
 
     // MARK: - Tear-down
     public func tearDown() {
-        if let runLoop = runLoop {
-            CFRunLoopStop(runLoop)
-            self.runLoop = nil
+        if let socket = socket {
+            CFSocketInvalidate(socket)
+            self.socket = nil
         }
         if let socketSource = socketSource {
             CFRunLoopSourceInvalidate(socketSource)
             self.socketSource = nil
         }
-        if let socket = socket {
-            CFSocketInvalidate(socket)
-            self.socket = nil
+        if let runLoop = runLoop {
+            CFRunLoopStop(runLoop)
+            self.runLoop = nil
         }
         unmanagedSocketInfo?.release()
         unmanagedSocketInfo = nil

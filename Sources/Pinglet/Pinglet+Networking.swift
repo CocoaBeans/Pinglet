@@ -25,51 +25,6 @@
 import Foundation
 
 extension Pinglet {
-    // MARK: - Socket callback
-
-    internal func socket(_ socket: CFSocket, didReadData data: Data?) {
-        if killSwitch { return }
-
-        guard let data = data else { return }
-        var validationError: PingError?
-        var sequence: UInt16? = .none
-
-        do {
-            let validation = try validateResponse(from: data)
-            if !validation { return }
-            let icmp: ICMPHeader = try ICMPHeader.from(data: data)
-            sequence = icmp.sequenceNumberToHost
-
-        }
-        catch let error as PingError {
-            validationError = error
-        }
-        catch {
-            print("Unhandled error thrown: \(error)")
-        }
-
-        // timeoutTimer?.invalidate()
-        var ipHeader: IPHeader?
-        if validationError == nil {
-            ipHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
-        }
-
-        guard let sequenceIndex: UInt16 = sequence,
-              let request: PingRequest = pendingRequest(for: Int(sequenceIndex)) else {
-            fatalError("Could not look up pending request for sequenceIndex: \(sequence ?? UInt16.min)")
-        }
-
-        // Get the request from the sequence index of the echoed ICMP Packet
-        informObservers(of: PingResponse(identifier: request.identifier,
-                                        ipAddress: request.ipAddress,
-                                        sequenceIndex: request.sequenceIndex,
-                                        trueSequenceIndex: request.trueSequenceIndex,
-                                        duration: request.timeIntervalSinceStart,
-                                        error: validationError,
-                                        byteCount: data.count,
-                                        ipHeader: ipHeader))
-    }
-
     internal func validateResponse(from data: Data) throws -> Bool {
         guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size else {
             throw PingError.invalidLength(received: data.count)
