@@ -170,7 +170,6 @@ public class Socket2Me: NSObject, ObservableObject {
     }
 
     // MARK: - Tear-down
-
     private func tearDown() {
         if socketSource != nil {
             CFRunLoopSourceInvalidate(socketSource)

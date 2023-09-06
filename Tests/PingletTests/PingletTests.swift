@@ -37,7 +37,7 @@ enum PingletTestError {
 
 final class PingletTests: XCTestCase {
 
-    var pinglet: Pinglet! = PingletTests.defaultPinglet
+    var pinglet: Pinglet!
 
     private var subscriptions = Set<AnyCancellable>()
     private let pingRuntime: TimeInterval = 3
@@ -45,10 +45,11 @@ final class PingletTests: XCTestCase {
 
     static var defaultPinglet: Pinglet {
         let config = PingConfiguration(interval: 0.25, timeout: 1)
-        let ping: Pinglet = try! Pinglet(host: "24mountains.com",
+        let ping: Pinglet = try! Pinglet(host: "1.1.1.1",
                                          configuration: config,
                                          queue: DispatchQueue.global(qos: .background))
         ping.runInBackground = true
+        ping.allowBackgroundPinging = true
         return ping
     }
 
@@ -89,6 +90,45 @@ final class PingletTests: XCTestCase {
 
         return expectation
     }
+
+    #if os(iOS)
+    func testAutoStopInBackground() throws {
+        pinglet.allowBackgroundPinging = false
+        pinglet.runInBackground = false
+
+        var responses = [PingResponse]()
+        pinglet.$responses
+                .sink { pings in
+                    print("Ping Count: \(pings.count)")
+                    responses = pings
+                }
+                .store(in: &subscriptions)
+
+        // Ping for 4 seconds
+        try pinglet.startPinging()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 4))
+        XCTAssert(responses.count > 1)
+
+        // Post the "background notification"
+        print("UIApplication.didEnterBackgroundNotification")
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+
+        // Verify that pings are not happening after `didEnterBackgroundNotification`
+        // by checking that `responses.count` is the same after waiting 4 seconds.
+        let preCount: Int = responses.count
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 4))
+        let postCount: Int = responses.count
+        XCTAssert(preCount == postCount)
+
+        // Post the "foreground notification"
+        print("UIApplication.didBecomeActiveNotification")
+        NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 4))
+
+        XCTAssert(responses.count > postCount)
+    }
+    #endif
+
 
     private func waitForDefaultPinglet() throws {
         let expectation: XCTestExpectation = try queueTestPinglet()

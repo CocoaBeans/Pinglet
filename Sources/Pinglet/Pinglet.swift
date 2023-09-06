@@ -2,17 +2,17 @@
   Pinglet
   This project is based on SwiftyPing: https://github.com/samiyr/SwiftyPing
   Copyright (c) 2023 Kevin Ross
-  
+
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal
   in the Software without restriction, including without limitation the rights
   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
   copies of the Software, and to permit persons to whom the Software is
   furnished to do so, subject to the following conditions:
-  
+
   The above copyright notice and this permission notice shall be included in all
   copies or substantial portions of the Software.
-  
+
   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -105,8 +105,6 @@ public class Pinglet: NSObject, ObservableObject {
 
     internal var socket: Socket2Me?
 
-    /// When the current request was sent.
-    // private var sequenceStart = Date()
     /// The current sequence number.
     private var _sequenceIndex: UInt16 = 0
     internal var sequenceIndex: UInt16 {
@@ -123,7 +121,8 @@ public class Pinglet: NSObject, ObservableObject {
 
     internal var erroredIndices = [Int]()
 
-    internal var subscriptions = Set<AnyCancellable>()
+    internal var cancellables = Set<AnyCancellable>()
+    internal var notificationCancellables = Set<AnyCancellable>()
     internal var timeoutTimers = [AnyHashable: Timer]()
 
     /// Initializes a pinglet.
@@ -159,9 +158,9 @@ public class Pinglet: NSObject, ObservableObject {
             .sink { [unowned self] (_: Notification) in
                 if allowBackgroundPinging { return }
                 autoHalted = true
-                haltPinging(resetSequence: false)
+                stopPinging(resetSequence: false)
             }
-            .store(in: &subscriptions)
+            .store(in: &notificationCancellables)
         NotificationCenter.default
             .publisher(for: UIApplication.didBecomeActiveNotification)
             .sink { [unowned self] (_: Notification) in
@@ -170,7 +169,7 @@ public class Pinglet: NSObject, ObservableObject {
                     try? startPinging()
                 }
             }
-            .store(in: &subscriptions)
+            .store(in: &notificationCancellables)
     }
     #endif
 
@@ -212,110 +211,117 @@ public class Pinglet: NSObject, ObservableObject {
     /// - Throws: If setting a socket options flag fails, throws a `PingError.socketOptionsSetError(:)`.
     private func createSocket() throws {
         socket = Socket2Me(destination: destination)
+        socket?.runInBackground = runInBackground
         createDataSentPipeline()
         createDataReceivedPipeline()
     }
 
     private func createDataSentPipeline() {
         socket?.dataSentPublisher
-               .tryMap { (data: Data) -> ICMPHeader in
-                   try ICMPHeader.from(data: data)
-               }
-               .mapError { error -> PingError in
-                   switch error {
-                   case let pingError as PingError:
-                       return pingError
-                   default:
-                       return .generic(error)
-                   }
-               }
-               .sink(receiveCompletion: { completion in
-                   print("dataSentPublisher.receiveCompletion: \(completion)")
-               },
-                     receiveValue: { (header: ICMPHeader) in
-                         let identifier = header.identifierToHost
-                         let sequenceIndex = header.sequenceNumberToHost
-                         self.delegate?.didSend(identifier: identifier, sequenceIndex: Int(sequenceIndex))
-                         self.requestObserver?(self.identifier, Int(sequenceIndex))
-                     })
-               .store(in: &subscriptions)
+            .tryMap { (data: Data) -> ICMPHeader in
+                try ICMPHeader.from(data: data)
+            }
+            .mapError { error -> PingError in
+                switch error {
+                case let pingError as PingError:
+                    return pingError
+                default:
+                    return .generic(error)
+                }
+            }
+            .sink(receiveCompletion: { completion in
+                      print("dataSentPublisher.receiveCompletion: \(completion)")
+                  },
+                  receiveValue: { (header: ICMPHeader) in
+                      let identifier = header.identifierToHost
+                      let sequenceIndex = header.sequenceNumberToHost
+                      self.delegate?.didSend(identifier: identifier, sequenceIndex: Int(sequenceIndex))
+                      self.requestObserver?(self.identifier, Int(sequenceIndex))
+                  })
+            .store(in: &cancellables)
     }
 
     private func createDataReceivedPipeline() {
         socket?.dataReceivedPublisher
-               .removeDuplicates()
-               .tryCompactMap { (data: Data) in
-                   var sequence: UInt16? = .none
-                   var id: UInt16? = .none
-                   var validationError: PingError?
+            .removeDuplicates()
+            .tryCompactMap { (data: Data) in
+                var sequence: UInt16? = .none
+                var id: UInt16? = .none
+                var validationError: PingError?
 
-                   do {
-                       let _: Bool = try self.validateResponse(from: data)
-                       let icmp: ICMPHeader = try ICMPHeader.from(data: data)
-                       sequence = icmp.sequenceNumberToHost
-                       id = icmp.identifierToHost
-                   }
-                   catch {
-                       switch error {
-                       case let pingError as PingError:
-                           validationError = pingError
-                       default:
-                           validationError = PingError.generic(error)
-                       }
-                   }
-                   let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
+                do {
+                    let _: Bool = try self.validateResponse(from: data)
+                    let icmp: ICMPHeader = try ICMPHeader.from(data: data)
+                    sequence = icmp.sequenceNumberToHost
+                    id = icmp.identifierToHost
+                }
+                catch {
+                    switch error {
+                    case let pingError as PingError:
+                        validationError = pingError
+                    default:
+                        validationError = PingError.generic(error)
+                    }
+                }
+                let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
 
-                   // // Get the request from the sequence index of the echoed ICMP Packet
-                   guard id == self.identifier else { return nil }
-                   guard let sequenceIndex: UInt16 = sequence,
-                         let request: PingRequest = self.pendingRequest(for: Int(sequenceIndex)) else {
-                       print("Could not look up pending request for sequenceIndex: \(String(describing: sequence))")
-                       return nil
-                   }
+                // // Get the request from the sequence index of the echoed ICMP Packet
+                guard id == self.identifier else { return nil }
+                guard let sequenceIndex: UInt16 = sequence,
+                      let request: PingRequest = self.pendingRequest(for: Int(sequenceIndex)) else {
+                    print("Could not look up pending request for sequenceIndex: \(String(describing: sequence))")
+                    return nil
+                }
 
-                   return PingResponse(identifier: request.identifier,
-                                       ipAddress: request.ipAddress,
-                                       sequenceIndex: request.sequenceIndex,
-                                       trueSequenceIndex: request.trueSequenceIndex,
-                                       duration: request.timeIntervalSinceStart,
-                                       error: validationError,
-                                       byteCount: data.count,
-                                       ipHeader: ipHeader)
-               }
-               .mapError { error -> PingError in
-                   switch error {
-                   case let pingError as PingError:
-                       return pingError
-                   default:
-                        return .generic(error)
-                   }
-               }
-               .sink(receiveCompletion: { [unowned self] (completion: Subscribers.Completion<Error>) in
-                   switch completion {
-                   case .finished:
-                       print("Socket \(String(describing: socket)) was closed")
-                   case .failure(let reason):
-                       print("Socket \(String(describing: socket)) was closed because: \(reason)")
-                   }
-                   print("receiveCompletion: \(completion)")
-               },
-                     receiveValue: { (response: PingResponse) in
-                         self.informObservers(of: response)
-                     })
-               .store(in: &subscriptions)
+                return PingResponse(identifier: request.identifier,
+                                    ipAddress: request.ipAddress,
+                                    sequenceIndex: request.sequenceIndex,
+                                    trueSequenceIndex: request.trueSequenceIndex,
+                                    duration: request.timeIntervalSinceStart,
+                                    error: validationError,
+                                    byteCount: data.count,
+                                    ipHeader: ipHeader)
+            }
+            .mapError { error -> PingError in
+                switch error {
+                case let pingError as PingError:
+                    return pingError
+                default:
+                    return .generic(error)
+                }
+            }
+            .sink(receiveCompletion: { [unowned self] (completion: Subscribers.Completion<Error>) in
+                      switch completion {
+                      case .finished:
+                          print("Socket \(String(describing: socket)) was closed")
+                      case let .failure(reason):
+                          print("Socket \(String(describing: socket)) was closed because: \(reason)")
+                      }
+                      print("receiveCompletion: \(completion)")
+                  },
+                  receiveValue: { (response: PingResponse) in
+                      self.informObservers(of: response)
+                  })
+            .store(in: &cancellables)
     }
 
     // MARK: - Tear-down
 
     private func tearDown() {
+        print("Pinglet: tearDown")
         socket = nil
 
         pendingRequests.removeAll()
-        timeoutTimers.forEach { key, timer in
+        timeoutTimers.forEach { _, timer in
             timer.invalidate()
         }
         timeoutTimers.removeAll()
-        subscriptions.removeAll()
+
+        // Skip clearing notification listeners if we have been stopped because we're in the background.
+        if autoHalted == false {
+            notificationCancellables.removeAll()
+        }
+        cancellables.removeAll()
     }
 
     deinit {
@@ -330,7 +336,7 @@ public class Pinglet: NSObject, ObservableObject {
         set { serialProperty.sync { _isPinging = newValue } }
     }
 
-    private func sendPing(request: PingRequest)  {
+    private func sendPing(request: PingRequest) {
         guard let icmpPackage: Data = try? createICMPPackage(identifier: UInt16(request.identifier),
                                                              sequenceNumber: UInt16(request.sequenceIndex))
         else {
@@ -382,7 +388,7 @@ public class Pinglet: NSObject, ObservableObject {
     private func scheduleNextPing() {
         if isTargetCountReached() {
             if configuration.haltAfterTarget {
-                haltPinging()
+                stopPinging()
             }
             else {
                 informFinishedStatus(trueSequenceIndex)
@@ -428,7 +434,9 @@ public class Pinglet: NSObject, ObservableObject {
 
     /// Start pinging the host.
     public func startPinging() throws {
-        guard isPinging == false else { return }
+        guard isPinging == false else {
+            return
+        }
         if socket == nil {
             try createSocket()
         }
@@ -437,7 +445,7 @@ public class Pinglet: NSObject, ObservableObject {
         sendPing()
     }
 
-    /// Stop pinging the host.
+    /// Stops pinging the host and destroys the CFSocket object.
     /// - Parameter resetSequence: Controls whether the sequence index should be set back to zero.
     public func stopPinging(resetSequence: Bool = true) {
         guard isPinging == true else { return }
@@ -453,27 +461,12 @@ public class Pinglet: NSObject, ObservableObject {
         tearDown()
     }
 
-    /// Stops pinging the host and destroys the CFSocket object.
-    /// - Parameter resetSequence: Controls whether the sequence index should be set back to zero.
-    public func haltPinging(resetSequence: Bool = true) {
-        stopPinging(resetSequence: resetSequence)
-        tearDown()
-    }
-
     private func incrementSequenceIndex() {
         // Handle overflow gracefully
-        if sequenceIndex >= UInt16.max {
-            sequenceIndex = 0
-        }
-        else {
-            sequenceIndex += 1
-        }
+        if sequenceIndex >= UInt16.max { sequenceIndex = 0 }
+        else { sequenceIndex += 1 }
 
-        if trueSequenceIndex >= UInt64.max {
-            trueSequenceIndex = 0
-        }
-        else {
-            trueSequenceIndex += 1
-        }
+        if trueSequenceIndex >= UInt64.max { trueSequenceIndex = 0 }
+        else { trueSequenceIndex += 1 }
     }
 }
