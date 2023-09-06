@@ -299,8 +299,8 @@ public class Pinglet: NSObject, ObservableObject {
                       }
                       print("receiveCompletion: \(completion)")
                   },
-                  receiveValue: { (response: PingResponse) in
-                      self.informObservers(of: response)
+                  receiveValue: { [weak self] (response: PingResponse) in
+                      self?.informObservers(of: response)
                   })
             .store(in: &cancellables)
     }
@@ -309,6 +309,7 @@ public class Pinglet: NSObject, ObservableObject {
 
     private func tearDown() {
         print("Pinglet: tearDown")
+        socket?.tearDown()
         socket = nil
 
         pendingRequests.removeAll()

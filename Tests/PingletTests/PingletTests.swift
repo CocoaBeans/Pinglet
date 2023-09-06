@@ -78,6 +78,22 @@ final class PingletTests: XCTestCase {
         XCTAssert(collectedResponses.isEmpty == false)
     }
 
+    func testMultipleStartStop() throws {
+        var collectedResponses = [PingResponse]()
+        pinglet.responsePublisher
+                .sink(receiveCompletion: { completion in  },
+                        receiveValue: { response in
+                            print(response)
+                            collectedResponses.append(response)
+                        })
+                .store(in: &subscriptions)
+        for count in 0...5 {
+            try waitForDefaultPinglet()
+            print("[\(count) loop count] total pings: \(collectedResponses.count)")
+            XCTAssert(collectedResponses.isEmpty == false)
+        }
+    }
+
     func queueTestPinglet() throws -> XCTestExpectation {
         let expectation = XCTestExpectation()
 

@@ -64,8 +64,6 @@ public class Socket2Me: NSObject, ObservableObject {
 
     private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .utility)
 
-    private var subscriptions = Set<AnyCancellable>()
-
     public init(destination: Destination) {
         self.destination = destination
         super.init()
@@ -170,18 +168,18 @@ public class Socket2Me: NSObject, ObservableObject {
     }
 
     // MARK: - Tear-down
-    private func tearDown() {
-        if socketSource != nil {
-            CFRunLoopSourceInvalidate(socketSource)
-            socketSource = nil
-        }
-        if socket != nil {
-            CFSocketInvalidate(socket)
-            socket = nil
-        }
-        if runLoop != nil {
+    public func tearDown() {
+        if let runLoop = runLoop {
             CFRunLoopStop(runLoop)
-            runLoop = nil
+            self.runLoop = nil
+        }
+        if let socketSource = socketSource {
+            CFRunLoopSourceInvalidate(socketSource)
+            self.socketSource = nil
+        }
+        if let socket = socket {
+            CFSocketInvalidate(socket)
+            self.socket = nil
         }
         unmanagedSocketInfo?.release()
         unmanagedSocketInfo = nil
