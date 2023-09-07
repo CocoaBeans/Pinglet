@@ -4,16 +4,16 @@ A little ping package written in modern swift.
 
 This project is based on SwiftyPing: https://github.com/samiyr/SwiftyPing
 
-Added features:
-- Background pings: all network activity can be offloaded to a background queue
-- Includes support for pinging when the app is inactive on iOS
-- Conforms to ObservableObject and publishers for Combine pipelines 
-- Multithreaded: Pings are sent and received independently of each other (i.e. you can send another ping before any previous pings have returned)
+## Added features
+- Background pings: all network activity can be offloaded to a background thread.
+- Includes support for pinging when the app is inactive on iOS.
+- Conforms to ObservableObject and publishers for SwiftUI and Combine pipelines. 
+- Multithreaded: Pings are sent and received independently of each other (i.e. you can send another ping before any previous pings have returned).
 
 ### Usage
 ```swift
 
-// Ping indefinitely
+// Ping indefinitely with closure callback
 let pinglet = try? Pinglet(host: "1.1.1.1", configuration: PingConfiguration(interval: 0.5, with: 5), queue: DispatchQueue.global())
 pinglet?.responseObserver = { (response) in
     let duration = response.duration
@@ -21,7 +21,7 @@ pinglet?.responseObserver = { (response) in
 }
 try? pinglet?.startPinging()
 
-// Ping once
+// Ping once with closure callback
 let once = try? Pinglet(host: "1.1.1.1", configuration: PingConfiguration(interval: 0.5, with: 5), queue: DispatchQueue.global())
 once?.responseObserver = { (response) in
     let duration = response.duration
@@ -30,13 +30,20 @@ once?.responseObserver = { (response) in
 once?.targetCount = 1
 try? once?.startPinging()
 
-// Combine
+// Ping indefinitely with combine publishers
 let pinglet = try? Pinglet(host: "1.1.1.1", configuration: PingConfiguration(interval: 0.5, with: 5), queue: DispatchQueue.global())
 pinglet.$responses
        .sink { (pings: [PingResponse]) in
            print("ping count: \(pings.count)")
        }
        .store(in: &subscriptions)
+
+pinglet.responsePublisher
+        .sink(receiveCompletion: { completion in  },
+                receiveValue: { response in
+                    print("response: \(response.duration)")
+                })
+        .store(in: &subscriptions)
 
 ```
 ### Installation
