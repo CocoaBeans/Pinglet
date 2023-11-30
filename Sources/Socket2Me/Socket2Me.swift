@@ -64,6 +64,8 @@ public class Socket2Me: NSObject, ObservableObject {
 
     private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .utility)
 
+    private var detachedThread: Thread?
+
     public init(destination: Destination) {
         self.destination = destination
         super.init()
@@ -72,6 +74,7 @@ public class Socket2Me: NSObject, ObservableObject {
 
     @objc
     private func createSocketDetached() {
+        detachedThread = Thread.current
         try? _openNetworkSocket()
     }
 
@@ -183,6 +186,7 @@ public class Socket2Me: NSObject, ObservableObject {
         }
         unmanagedSocketInfo?.release()
         unmanagedSocketInfo = nil
+        detachedThread?.cancel()
     }
 
     deinit {

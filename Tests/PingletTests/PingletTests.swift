@@ -87,6 +87,7 @@ final class PingletTests: XCTestCase {
                             if response.duration < 0 {
                                 print("BREAK")
                             }
+                            XCTAssert(response.duration > 0)
                             collectedResponses.append(response)
                         })
                 .store(in: &subscriptions)
