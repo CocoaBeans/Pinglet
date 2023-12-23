@@ -75,7 +75,13 @@ public class Socket2Me: NSObject, ObservableObject {
     @objc
     private func createSocketDetached() {
         detachedThread = Thread.current
-        detachedThread?.name = "Pinglet @ \(Date.now.formatted())"
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        let formatted: String = formatter.string(from: Date())
+
+        detachedThread?.name = "Pinglet @ \(formatted)"
         try? _openNetworkSocket()
     }
 
