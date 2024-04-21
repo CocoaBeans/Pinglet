@@ -167,8 +167,9 @@ public class Socket2Me: NSObject, ObservableObject {
             CFRunLoopAddSource(CFRunLoopGetMain(), socketSource, .commonModes)
         }
     }
+
     private func emitSocketError(code: Int32) throws {
-        let error: SocketError = SocketError.socketOptionsSetError(errorCode: code)
+        let error = SocketError.socketOptionsSetError(errorCode: code)
         try emitSocketError(error: error)
     }
 
@@ -206,7 +207,7 @@ public class Socket2Me: NSObject, ObservableObject {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 extension Socket2Me {
-    internal func socket(_ socket: CFSocket, didReadData data: Data?) {
+    func socket(_ socket: CFSocket, didReadData data: Data?) {
         guard let data: Data = data,
               self.socket == socket
         else { return }
@@ -218,8 +219,8 @@ extension Socket2Me {
 // MARK: - Write Socket Data
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-extension Socket2Me {
-    public func send(data: Data) {
+public extension Socket2Me {
+    func send(data: Data) {
         queue.async {
             do {
                 let address: Data = self.destination.ipv4Address
@@ -247,8 +248,10 @@ extension Socket2Me {
             }
             catch {
                 if let err = error as? SocketError {
-                    self.dataSentSubject.send(completion: .failure(err))
-                    self.dataReceivedSubject.send(completion: .failure(err))
+                    if err != SocketError.requestError && err != .requestTimeout {
+                        self.dataSentSubject.send(completion: .failure(err))
+                        self.dataReceivedSubject.send(completion: .failure(err))
+                    }
                 }
                 else {
                     self.dataSentSubject.send(completion: .failure(.dataTransmissionFailed))
@@ -258,4 +261,3 @@ extension Socket2Me {
         }
     }
 }
-
