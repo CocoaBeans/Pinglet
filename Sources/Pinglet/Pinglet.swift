@@ -249,6 +249,8 @@ public class Pinglet: NSObject, ObservableObject {
         // Log.ping.trace(#function)
         socket?.dataReceivedPublisher
             .removeDuplicates()
+            .replaceError(with: Data())
+            .filter { $0.isEmpty == false }
             .tryCompactMap { (data: Data) in
                 var sequence: UInt16? = .none
                 var id: UInt16? = .none
@@ -268,9 +270,8 @@ public class Pinglet: NSObject, ObservableObject {
                         validationError = PingError.generic(error)
                     }
                 }
-                let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
 
-                // // Get the request from the sequence index of the echoed ICMP Packet
+                // Get the request from the sequence index of the echoed ICMP Packet
                 guard id == self.identifier else { return nil }
                 guard let sequenceIndex: UInt16 = sequence,
                       let request: PingRequest = self.pendingRequest(for: Int(sequenceIndex)) else {
@@ -278,6 +279,7 @@ public class Pinglet: NSObject, ObservableObject {
                     return nil
                 }
 
+                let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
                 return PingResponse(identifier: request.identifier,
                                     ipAddress: request.ipAddress,
                                     sequenceIndex: request.sequenceIndex,
