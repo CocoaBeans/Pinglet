@@ -214,6 +214,8 @@ public class Pinglet: NSObject, ObservableObject {
         // Log.ping.trace(#function)
         socket = Socket2Me(destination: destination)
         socket?.runInBackground = runInBackground
+        socket?.timeToLive = configuration.timeToLive
+
         createDataSentPipeline()
         createDataReceivedPipeline()
     }
