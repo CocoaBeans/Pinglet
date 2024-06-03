@@ -135,8 +135,7 @@ public class Pinglet: NSObject, ObservableObject {
                 queue: DispatchQueue = DispatchQueue.main) throws {
         self.destination = destination
         self.configuration = configuration
-        currentQueue = queue
-
+        currentQueue = DispatchQueue(label: "Pinglet Internal", target: queue)
         super.init()
 
         #if os(iOS)
