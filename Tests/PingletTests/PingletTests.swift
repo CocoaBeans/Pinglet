@@ -40,7 +40,7 @@ final class PingletTests: XCTestCase {
     var pinglet: Pinglet!
 
     private var subscriptions = Set<AnyCancellable>()
-    private let pingRuntime: TimeInterval = 3
+    private let pingRuntime: TimeInterval = 5
     private let testTimeout: TimeInterval = 11
 
     static var defaultPinglet: Pinglet {
@@ -60,6 +60,8 @@ final class PingletTests: XCTestCase {
 
     override func tearDown() {
         super.tearDown()
+        pinglet.requestObserver = nil
+        pinglet.responseObserver = nil
         pinglet = nil
         subscriptions.removeAll()
     }
@@ -109,6 +111,10 @@ final class PingletTests: XCTestCase {
         }
 
         return expectation
+    }
+
+    func testNoRegisteredObservers() throws {
+        try waitForDefaultPinglet()
     }
 
     #if os(iOS)
@@ -175,16 +181,17 @@ final class PingletTests: XCTestCase {
             expectation.fulfill()
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) {
             print("Ping Multiple-start")
-            try? self.pinglet.startPinging()
-            try? self.pinglet.startPinging()
-            try? self.pinglet.startPinging()
-            try? self.pinglet.startPinging()
-            try? self.pinglet.startPinging()
-            try? self.pinglet.startPinging()
-            try? self.pinglet.startPinging()
         }
+
+        for seconds in [1,2,3,4,5,6,7,8,9] {
+            let pinglet = self.pinglet!
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) {
+                try? pinglet.startPinging()
+            }
+        }
+
         wait(for: [expectation], timeout: testTimeout)
 
         print("total pings: \(pinglet.responses.count)")
