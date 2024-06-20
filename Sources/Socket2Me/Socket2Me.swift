@@ -129,7 +129,7 @@ public class Socket2Me: NSObject, ObservableObject {
                                        socket == socket2Me.socket,
                                        address == socket2Me.destination.ipv4Address {
                                         let cfdata: CFData = Unmanaged<CFData>.fromOpaque(data).takeUnretainedValue()
-                                        socket2Me.socket(socket, didReadData: cfdata as Data)
+                                        socket2Me.socket(socket, didReadData: CFDataCreateCopy(.none, cfdata) as Data)
                                     }
                                 },
                                 &context)
