@@ -61,6 +61,7 @@ public class Socket2Me: NSObject, ObservableObject {
     private var socketSource: CFRunLoopSource?
     /// An unmanaged instance of `SocketInfo` used in the current socket's callback. This must be released manually, otherwise it will leak.
     private var unmanagedSocketInfo: Unmanaged<SocketInfo>?
+    private var killSwitch: Bool = false
 
     private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .utility)
 
@@ -180,6 +181,7 @@ public class Socket2Me: NSObject, ObservableObject {
 
     // MARK: - Tear-down
     public func tearDown() {
+        killSwitch = true
         if let socket = socket {
             CFSocketInvalidate(socket)
             self.socket = nil
@@ -225,7 +227,14 @@ public extension Socket2Me {
             do {
                 let address: Data = self.destination.ipv4Address
 
-                guard let socket: CFSocket = self.socket else { return }
+                // Make sure our socket is valid before trying to send data to it
+                guard self.killSwitch == false,
+                      let socket: CFSocket = self.socket,
+                      CFSocketIsValid(socket),
+                      let socketSource: CFRunLoopSource = self.socketSource,
+                      CFRunLoopSourceIsValid(socketSource)
+                else { return }
+
                 let socketError: CFSocketError = CFSocketSendData(socket,
                                                                   address as CFData,
                                                                   data as CFData,
