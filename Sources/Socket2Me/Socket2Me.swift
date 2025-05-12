@@ -40,11 +40,9 @@ public class SocketInfo {
 public class Socket2Me: NSObject, ObservableObject {
     public var destination: Destination
     public var timeout: TimeInterval = 30
-    public var dataReceivedPublisher: AnyPublisher<Data, SocketError> { dataReceivedSubject.eraseToAnyPublisher() }
-    private var dataReceivedSubject = PassthroughSubject<Data, SocketError>()
 
+    public var dataReceivedPublisher: AnyPublisher<Data, SocketError> { dataReceivedSubject.eraseToAnyPublisher() }
     public var dataSentPublisher: AnyPublisher<Data, SocketError> { dataSentSubject.eraseToAnyPublisher() }
-    private var dataSentSubject = PassthroughSubject<Data, SocketError>()
 
     /// Sets the TTL flag on the socket. All requests sent from the socket will include the TTL field set to this value.
     public var timeToLive: Int?
@@ -54,7 +52,6 @@ public class Socket2Me: NSObject, ObservableObject {
 
     /// Detached run loop for handling socket communication off of the main thread
     public var runLoop: CFRunLoop?
-
     /// Socket for sending and receiving data.
     private var socket: CFSocket?
     /// Socket source
@@ -66,6 +63,12 @@ public class Socket2Me: NSObject, ObservableObject {
     private let queue = DispatchQueue(label: "Socket2Me internal utility", qos: .utility)
 
     private var detachedThread: Thread?
+
+    @SerialAccess(defaultValue: PassthroughSubject<Data, SocketError>())
+    private var dataReceivedSubject
+
+    @SerialAccess(defaultValue: PassthroughSubject<Data, SocketError>())
+    private var dataSentSubject
 
     public init(destination: Destination) {
         self.destination = destination
