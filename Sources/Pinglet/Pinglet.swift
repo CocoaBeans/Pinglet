@@ -68,6 +68,9 @@ public class Pinglet: NSObject, ObservableObject {
     public let configuration: PingConfiguration
     /// This closure gets called with each ping request.
     public var requestObserver: RequestObserver?
+    public var requestPublisher: AnyPublisher<PingRequest, PingError> { requestPassthrough.eraseToAnyPublisher() }
+    private var requestPassthrough = PassthroughSubject<PingRequest, PingError>()
+
     /// This closure gets called with each ping response.
     public var responseObserver: ResponseObserver?
     public var responsePublisher: AnyPublisher<PingResponse, PingError> { responsePassthrough.eraseToAnyPublisher() }
@@ -359,6 +362,7 @@ public class Pinglet: NSObject, ObservableObject {
         }
         scheduleTimeout(for: request)
         socket?.send(data: icmpPackage)
+        requestPassthrough.send(request)
         scheduleNextPing()
     }
 
