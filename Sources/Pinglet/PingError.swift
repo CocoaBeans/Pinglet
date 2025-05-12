@@ -25,7 +25,7 @@
 import Foundation
 
 /// Describes all possible errors thrown within `Pinglet`
-public enum PingError: Error {
+public enum PingError: Error, Sendable {
     // Response errors
 
     /// The response took longer to arrive than `configuration.timeoutInterval`.

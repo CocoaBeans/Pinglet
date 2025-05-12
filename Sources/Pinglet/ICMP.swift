@@ -27,7 +27,7 @@ import Foundation
 // MARK: ICMP
 
 /// Format of IPv4 header
-public struct IPHeader {
+public struct IPHeader: Sendable {
     public var versionAndHeaderLength: UInt8
     public var differentiatedServices: UInt8
     public var totalLength: UInt16
@@ -41,7 +41,7 @@ public struct IPHeader {
 }
 
 /// ICMP header structure
-public struct ICMPHeader {
+public struct ICMPHeader: Sendable {
     /// Type of message
     var type: UInt8
     /// Type sub code

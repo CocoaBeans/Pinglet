@@ -24,7 +24,7 @@
 
 import Foundation
 
-protocol PingID: Identifiable {
+protocol PingID: Identifiable, Sendable {
     var id: UInt64 { get }
     /// The randomly generated identifier used in the ping header.
     var identifier: UInt16 { get }
