@@ -79,6 +79,7 @@ public class Socket2Me: NSObject, ObservableObject {
     @objc
     private func createSocketDetached() {
         detachedThread = Thread.current
+        detachedThread?.qualityOfService = .utility
 
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
