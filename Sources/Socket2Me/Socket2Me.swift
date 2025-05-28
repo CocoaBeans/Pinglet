@@ -185,20 +185,25 @@ public class Socket2Me: NSObject, ObservableObject {
     // MARK: - Tear-down
     public func tearDown() {
         killSwitch = true
-        if let socket = socket {
-            CFSocketInvalidate(socket)
-            self.socket = nil
-        }
+
         if let socketSource = socketSource {
             CFRunLoopSourceInvalidate(socketSource)
             self.socketSource = nil
         }
+
+        if let socket = socket {
+            // If a run loop source was created for socket, the run loop source is invalidated.
+            CFSocketInvalidate(socket)
+            self.socket = nil
+        }
+
+        unmanagedSocketInfo?.release()
+        unmanagedSocketInfo = nil
+
         if let runLoop = runLoop {
             CFRunLoopStop(runLoop)
             self.runLoop = nil
         }
-        unmanagedSocketInfo?.release()
-        unmanagedSocketInfo = nil
         detachedThread?.cancel()
     }
 
