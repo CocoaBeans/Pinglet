@@ -80,3 +80,37 @@ public enum PingError: Error, Sendable {
 
     case generic(Error)
 }
+
+extension PingError: CaseIterable {
+    public static var allCases: [PingError] {
+        [
+            .responseTimeout,
+            .invalidLength(received: 0),
+            .checksumMismatch(received: 0, calculated: 0),
+            // .invalidType(received: true),
+            .invalidCode(received: 0),
+            .identifierMismatch(received: 0, expected: 0),
+            .invalidSequenceIndex(received: 0, expected: 0),
+            .unknownHostError,
+            .addressLookupError,
+            .hostNotFound,
+            .addressMemoryError,
+            .requestError,
+            .requestTimeout,
+            .checksumOutOfBounds,
+            .unexpectedPayloadLength,
+            .packageCreationFailed,
+            .socketNil,
+            .invalidHeaderOffset,
+            .socketOptionsSetError(err: 0)
+            // .generic("TestError")
+        ]
+    }
+
+    static func logErrorCodes() {
+        print("|===== \t Pinglet PingError Codes: \t =====|")
+        for error in allCases {
+            print("\((error as NSError).description) \t code: \(error._code)")
+        }
+    }
+}

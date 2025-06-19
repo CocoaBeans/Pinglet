@@ -252,4 +252,17 @@ final class PingletTests: XCTestCase {
         try testSimplePing()
     }
 
+    func testLogErrorCodes() {
+        PingError.logErrorCodes()
+    }
+
+    func testSaveronePinger() throws {
+        let expectation = XCTestExpectation()
+        let pinger = Pinger()
+        pinger.start(5)
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(6)) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 7)
+    }
 }
