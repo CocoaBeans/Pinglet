@@ -5,14 +5,15 @@
 import Foundation
 
 @propertyWrapper
-public struct SerialAccess<Value> {
+public class SerialAccess<Value: Sendable> {
+    
+    private var defaultValue: Value
+    private let queue: DispatchQueue
 
-    public var queue: DispatchQueue
-    public var defaultValue: Value
-
-    init(queue: DispatchQueue = DispatchQueue(label: "SerialAccess", qos: .default), defaultValue: Value) {
-        self.queue = queue
+    public init(defaultValue: Value,
+                queue: DispatchQueue = DispatchQueue(label: "com.serialaccess.queue", qos: .`default`)) {
         self.defaultValue = defaultValue
+        self.queue = queue
     }
 
     public var wrappedValue: Value {
@@ -20,7 +21,9 @@ public struct SerialAccess<Value> {
             queue.sync { defaultValue }
         }
         set {
-            queue.sync { defaultValue = newValue }
+            queue.async(flags: [.barrier, .assignCurrentContext]) { [self] in
+                defaultValue = newValue
+            }
         }
     }
 }
