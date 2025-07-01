@@ -38,9 +38,9 @@ enum PingletTestError {
 final class PingletTests: XCTestCase {
     var pinglet: Pinglet!
 
-    private var subscriptions = Set<AnyCancellable>()
-    private let pingRuntime: TimeInterval = 5
-    private let testTimeout: TimeInterval = 11
+    private var observers = Set<AnyCancellable>()
+    private var pingRuntime: TimeInterval = 5
+    private var testTimeout: TimeInterval = 11
 
     static var defaultPinglet: Pinglet {
         let config = PingConfiguration(interval: 1, timeout: 3)
@@ -56,7 +56,25 @@ final class PingletTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        pingRuntime = 5
+        testTimeout = 11
         pinglet = Self.defaultPinglet
+
+        // Setup some debug observers for the request and response publishers of the default pinglet for tests.
+        // Individual tests might invalidate these if `pinglet` gets overwritten as part of the test.
+        pinglet.requestPublisher
+                .sink(receiveCompletion: { _ in },
+                        receiveValue: { request in
+                            Log.ping.notice("----> \(String(describing: request), privacy: .public)")
+                        })
+                .store(in: &observers)
+
+        pinglet.responsePublisher
+                .sink(receiveCompletion: { _ in },
+                        receiveValue: { response in
+                            Log.ping.notice("<---- \(String(describing: response), privacy: .public)")
+                        })
+                .store(in: &observers)
     }
 
     override func tearDown() {
@@ -64,7 +82,7 @@ final class PingletTests: XCTestCase {
         pinglet.requestObserver = nil
         pinglet.responseObserver = nil
         pinglet = nil
-        subscriptions.removeAll()
+        observers.removeAll()
     }
 
     func testPassthroughResponsePublisher() throws {
@@ -75,7 +93,7 @@ final class PingletTests: XCTestCase {
                       print(response)
                       collectedResponses.append(response)
                   })
-            .store(in: &subscriptions)
+            .store(in: &observers)
         try waitForDefaultPinglet()
         print("total pings: \(collectedResponses.count)")
         XCTAssert(collectedResponses.isEmpty == false)
@@ -93,7 +111,7 @@ final class PingletTests: XCTestCase {
                       XCTAssert(response.duration > 0)
                       collectedResponses.append(response)
                   })
-            .store(in: &subscriptions)
+            .store(in: &observers)
         for count in 0 ... 5 {
             try waitForDefaultPinglet()
             print("[\(count) loop count] total pings: \(collectedResponses.count)")
@@ -168,7 +186,7 @@ final class PingletTests: XCTestCase {
                 print("Combine.pings: \(pings.count)")
                 responses = pings
             }
-            .store(in: &subscriptions)
+            .store(in: &observers)
 
         let expectation = XCTestExpectation()
 
@@ -181,13 +199,10 @@ final class PingletTests: XCTestCase {
             expectation.fulfill()
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(500)) {
-            print("Ping Multiple-start")
-        }
-
-        for seconds in [1, 2, 3, 4, 5, 6, 7, 8, 9] {
-            let pinglet = self.pinglet!
-            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) {
+        for milliseconds in [100, 200, 300, 400, 500, 600, 700, 800, 900] {
+            let pinglet = pinglet!
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(milliseconds)) {
+                print("Ping Multiple-start")
                 try? pinglet.startPinging()
             }
         }
@@ -205,7 +220,7 @@ final class PingletTests: XCTestCase {
                 print("Combine.pings: \(pings.count)")
                 responses = pings
             }
-            .store(in: &subscriptions)
+            .store(in: &observers)
 
         try waitForDefaultPinglet()
         print("total pings: \(pinglet.responses.count)")
@@ -246,8 +261,9 @@ final class PingletTests: XCTestCase {
 
     func testStopViaTimer() throws {
         let config = PingConfiguration(interval: 0.001, timeout: pinglet.configuration.timeoutInterval)
+        pingRuntime = 1
         pinglet = try Pinglet(destination: pinglet.destination, configuration: config)
-        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(3)) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(888)) {
             print("stopped via timer on global queue")
             self.pinglet.stopPinging()
         }

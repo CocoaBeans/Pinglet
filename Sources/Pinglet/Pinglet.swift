@@ -249,17 +249,18 @@ public class Pinglet: NSObject, ObservableObject {
 
     private func createDataReceivedPipeline() {
         // Log.ping.trace(#function)
+        // Log.ping.debug("createDataReceivedPipeline for session id: \(self.identifier)")
         socket?.dataReceivedPublisher
             .removeDuplicates()
             .replaceError(with: Data())
             .filter { $0.isEmpty == false }
-            .tryCompactMap { (data: Data) in
+            .tryCompactMap { [weak self] (data: Data) in
                 var sequence: UInt16? = .none
                 var id: UInt16? = .none
                 var validationError: PingError?
 
                 do {
-                    let _: Bool = try self.validateResponse(from: data)
+                    let _ = try self?.validateResponse(from: data)
                     let icmp: ICMPHeader = try ICMPHeader.from(data: data)
                     sequence = icmp.sequenceNumberToHost
                     id = icmp.identifierToHost
@@ -274,22 +275,28 @@ public class Pinglet: NSObject, ObservableObject {
                 }
 
                 // Get the request from the sequence index of the echoed ICMP Packet
-                guard id == self.identifier else { return nil }
+                let selfID = self?.identifier ?? 0
+                guard id == selfID else {
+                    // DispatchQueue.global(qos: .background).async {
+                    //     Log.ping.debug("Received PingResponse for identifier: \(id ?? 0), sequence: \(sequence ?? 0) but our current session id is: \(selfID)")
+                    // }
+                    return nil
+                }
                 guard let sequenceIndex: UInt16 = sequence,
-                      let request: PingRequest = self.pendingRequest(for: Int(sequenceIndex)) else {
-                    print("Could not look up pending request for sequenceIndex: \(String(describing: sequence))")
+                      let request: PingRequest = self?.pendingRequest(for: Int(sequenceIndex)) else {
+                    Log.ping.warning("Could not look up pending request for sequenceIndex: \(String(describing: sequence))")
                     return nil
                 }
 
                 let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
                 return PingResponse(identifier: request.identifier,
-                                    ipAddress: request.ipAddress,
-                                    sequenceIndex: request.sequenceIndex,
-                                    trueSequenceIndex: request.trueSequenceIndex,
-                                    duration: request.timeIntervalSinceStart,
-                                    error: validationError,
-                                    byteCount: data.count,
-                                    ipHeader: ipHeader)
+                        ipAddress: request.ipAddress,
+                        sequenceIndex: request.sequenceIndex,
+                        trueSequenceIndex: request.trueSequenceIndex,
+                        duration: request.timeIntervalSinceStart,
+                        error: validationError,
+                        byteCount: data.count,
+                        ipHeader: ipHeader)
             }
             .mapError { error -> PingError in
                 switch error {
@@ -361,10 +368,11 @@ public class Pinglet: NSObject, ObservableObject {
         guard let icmpPackage: Data = try? createICMPPackage(identifier: UInt16(request.identifier),
                                                              sequenceNumber: UInt16(request.sequenceIndex))
         else {
-            print("Error creating icmp package!")
+            Log.ping.error("Error creating icmp package!")
             return
         }
         scheduleTimeout(for: request)
+        // Log.ping.debug("sendPing: \(String(describing: request))")
         socket?.send(data: icmpPackage)
         requestPassthrough.send(request)
         scheduleNextPing()
@@ -373,7 +381,7 @@ public class Pinglet: NSObject, ObservableObject {
     private func sendPing() {
         // Log.ping.trace(#function)
         if killSwitch { return }
-        serial.async { [self] in
+        serial.sync { [self] in
             sendPing(request: PingRequest(identifier: identifier,
                                           ipAddress: destination.ip,
                                           sequenceIndex: sequenceIndex,
@@ -478,6 +486,14 @@ public class Pinglet: NSObject, ObservableObject {
                 throw error
             }
         }
+        guard let socket = socket else {
+            throw "Failed to create socket!"
+        }
+
+        while !socket.isOpen, socket.isOpening {
+            RunLoop.current.run(until: Date().advanced(by: 0.1))
+        }
+
         killSwitch = false
         isPinging = true
         sendPing()

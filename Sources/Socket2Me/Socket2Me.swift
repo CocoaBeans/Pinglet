@@ -41,6 +41,9 @@ public class Socket2Me: NSObject, ObservableObject {
     public var destination: Destination
     public var timeout: TimeInterval = 30
 
+    public private (set) var isOpen: Bool = false
+    public private (set) var isOpening: Bool = false
+
     public var dataReceivedPublisher: AnyPublisher<Data, SocketError> { dataReceivedSubject.eraseToAnyPublisher() }
     public var dataSentPublisher: AnyPublisher<Data, SocketError> { dataSentSubject.eraseToAnyPublisher() }
 
@@ -93,6 +96,7 @@ public class Socket2Me: NSObject, ObservableObject {
     /// Initializes a CFSocket.
     /// - Throws: If setting a socket options flag fails, throws a `PingError.socketOptionsSetError(:)`.
     private func createSocket() throws {
+        isOpening = true
         if runInBackground {
             Thread.detachNewThreadSelector(#selector(createSocketDetached), toTarget: self, with: nil)
         }
@@ -161,15 +165,25 @@ public class Socket2Me: NSObject, ObservableObject {
 
         // ...and add it to the current run loop.
         socketSource = CFSocketCreateRunLoopSource(nil, socket, 0)
+        guard socket != nil, socketSource != nil else {
+            Log.socket.error("Socket2Me: FAILED to acquire a socket!")
+            return
+        }
+        // Log.socket.debug("Socket2Me: Acquired a socket")
+
         if let runLoop: CFRunLoop = CFRunLoopGetCurrent(),
            runLoop != CFRunLoopGetMain() {
             self.runLoop = runLoop
             CFRunLoopAddSource(runLoop, socketSource, .commonModes)
+            isOpen = true
+            isOpening = false
             // If we are not on the main run loop we have to run the loop to schedule timers and network sockets
             CFRunLoopRun()
         }
         else {
             CFRunLoopAddSource(CFRunLoopGetMain(), socketSource, .commonModes)
+            isOpen = true
+            isOpening = false
         }
     }
 
@@ -186,16 +200,16 @@ public class Socket2Me: NSObject, ObservableObject {
     // MARK: - Tear-down
     public func tearDown() {
         killSwitch = true
+        isOpen = false
+        isOpening = false
 
         if let socketSource = socketSource {
             CFRunLoopSourceInvalidate(socketSource)
-            self.socketSource = nil
         }
 
         if let socket = socket {
             // If a run loop source was created for socket, the run loop source is invalidated.
             CFSocketInvalidate(socket)
-            self.socket = nil
         }
 
         unmanagedSocketInfo?.release()
@@ -209,6 +223,7 @@ public class Socket2Me: NSObject, ObservableObject {
     }
 
     deinit {
+        Log.socket.debug("Socket2Me.deinit")
         tearDown()
     }
 }
@@ -242,7 +257,27 @@ public extension Socket2Me {
                       CFSocketIsValid(socket),
                       let socketSource: CFRunLoopSource = self.socketSource,
                       CFRunLoopSourceIsValid(socketSource)
-                else { return }
+                else {
+                    Log.socket.error("Socket2Me: Failed to send data!")
+                    if let socket = self.socket {
+                        if CFSocketIsValid(socket) {
+                            Log.socket.error("Socket2Me: socket IS valid")
+                        }
+                        else {
+                            Log.socket.error("Socket2Me: socket IS NOT valid")
+                        }
+
+                    }
+                    if let socketSource: CFRunLoopSource = self.socketSource {
+                        if CFRunLoopSourceIsValid(socketSource) {
+                            Log.socket.error("Socket2Me: socket run loop source IS valid")
+                        }
+                        else {
+                            Log.socket.error("Socket2Me: socket run loop source IS NOT valid")
+                        }
+                    }
+                    return
+                }
 
                 let socketError: CFSocketError = CFSocketSendData(socket,
                                                                   address as CFData,
@@ -269,6 +304,9 @@ public extension Socket2Me {
                     if err != SocketError.requestError && err != .requestTimeout {
                         self.dataSentSubject.send(completion: .failure(err))
                         self.dataReceivedSubject.send(completion: .failure(err))
+                    }
+                    else {
+                        Log.socket.error("error: \(String(describing: err))")
                     }
                 }
                 else {

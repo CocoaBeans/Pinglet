@@ -38,6 +38,10 @@ public struct IPHeader: Sendable {
     public var headerChecksum: UInt16
     public var sourceAddress: (UInt8, UInt8, UInt8, UInt8)
     public var destinationAddress: (UInt8, UInt8, UInt8, UInt8)
+
+    init(data: Data) {
+        self = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
+    }
 }
 
 /// ICMP header structure

@@ -26,7 +26,7 @@ import Foundation
 
 extension Pinglet {
     internal func completeRequest(for sequenceID: Int) {
-        // Log.ping.trace("completeRequest(for: \(sequenceID))")
+        // Log.ping.debug("completeRequest(for: \(sequenceID))")
         invalidateTimer(sequenceID: sequenceID)
         serialProperty.async {
             self.pendingRequests.removeAll { (request: PingRequest) in request.sequenceIndex == sequenceID }
@@ -40,7 +40,7 @@ extension Pinglet {
     }
 
     internal func invalidateTimer(sequenceID: Int) {
-        serialProperty.sync {
+        serialProperty.async { [self] in
             guard let timer: Timer = timeoutTimers[sequenceID] else { return }
             // Log.ping.debug("invalidateTimer(sequenceID: \(sequenceID))")
             timer.invalidate()
@@ -63,24 +63,23 @@ extension Pinglet {
     }
 
     internal func scheduleTimeout(for request: PingRequest) {
-        // Log.ping.debug("scheduleTimeout(sequenceID: \(request.sequenceIndex))")
-
-        serialProperty.sync {
-            let timer = Timer(timeInterval: self.configuration.timeoutInterval, repeats: false) { [weak self] (timer: Timer) in
-                print("Time-out via timer for request: \(request.sequenceIndex)")
+        serialProperty.async { [self] in
+            // Log.ping.debug("scheduleTimeout(sequenceID: \(request.sequenceIndex))")
+            let timer = Timer(timeInterval: configuration.timeoutInterval, repeats: false) { [weak self] (timer: Timer) in
+                Log.ping.notice("Time-out for request: \(request.sequenceIndex)")
                 self?.informObserversOfTimeout(for: request)
             }
 
             // If we have an internal socket run loop then we will add the timer to that run loop.
-            if let cfRunLoop = self.socket?.runLoop {
+            if let cfRunLoop = socket?.runLoop {
                 CFRunLoopAddTimer(cfRunLoop, timer, .commonModes)
             }
             else {
                 RunLoop.main.add(timer, forMode: .common)
             }
 
-            self.pendingRequests.append(request)
-            self.timeoutTimers[request.id] = timer
+            pendingRequests.append(request)
+            timeoutTimers[request.sequenceIndex] = timer
         }
     }
 }

@@ -41,6 +41,11 @@ public struct Destination {
         self.host = host
         self.ipv4Address = ipv4Address
     }
+    
+    public init(host: String) throws {
+        self.host = host
+        self.ipv4Address = try Destination.getIPv4AddressFromHost(host: host)
+    }
 
     /// Resolves the `host`.
     public static func getIPv4AddressFromHost(host: String) throws -> Data {

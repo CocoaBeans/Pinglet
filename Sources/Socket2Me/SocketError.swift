@@ -63,3 +63,8 @@ public enum SocketError: Error, Equatable {
     /// Failed to change socket options, in particular SIGPIPE.
     case socketOptionsSetError(errorCode: Int32)
 }
+
+
+extension String: LocalizedError {
+    public var errorDescription: String? { self }
+}
