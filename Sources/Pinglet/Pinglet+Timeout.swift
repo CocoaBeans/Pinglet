@@ -40,11 +40,11 @@ extension Pinglet {
     }
 
     internal func invalidateTimer(sequenceID: Int) {
-        serialProperty.async {
-            guard let timer: Timer = self.timeoutTimers[sequenceID] else { return }
+        serialProperty.sync {
+            guard let timer: Timer = timeoutTimers[sequenceID] else { return }
             // Log.ping.debug("invalidateTimer(sequenceID: \(sequenceID))")
             timer.invalidate()
-            self.timeoutTimers.removeValue(forKey: sequenceID)
+            timeoutTimers.removeValue(forKey: sequenceID)
         }
     }
 
@@ -63,15 +63,13 @@ extension Pinglet {
     }
 
     internal func scheduleTimeout(for request: PingRequest) {
-        // Log.ping.debug("scheduleTimeout(for: \(request.sequenceIndex))")
-        let timer = Timer(timeInterval: configuration.timeoutInterval, repeats: false) { [weak self] (timer: Timer) in
-            print("Time-out via timer for request: \(request.sequenceIndex)")
-            self?.informObserversOfTimeout(for: request)
-        }
+        // Log.ping.debug("scheduleTimeout(sequenceID: \(request.sequenceIndex))")
 
-        serialProperty.async {
-            self.pendingRequests.append(request)
-            self.timeoutTimers[request.id] = timer
+        serialProperty.sync {
+            let timer = Timer(timeInterval: self.configuration.timeoutInterval, repeats: false) { [weak self] (timer: Timer) in
+                print("Time-out via timer for request: \(request.sequenceIndex)")
+                self?.informObserversOfTimeout(for: request)
+            }
 
             // If we have an internal socket run loop then we will add the timer to that run loop.
             if let cfRunLoop = self.socket?.runLoop {
@@ -80,6 +78,9 @@ extension Pinglet {
             else {
                 RunLoop.main.add(timer, forMode: .common)
             }
+
+            self.pendingRequests.append(request)
+            self.timeoutTimers[request.id] = timer
         }
     }
 }
