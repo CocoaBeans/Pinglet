@@ -48,7 +48,9 @@ final class PingletTests: XCTestCase {
                                          configuration: config,
                                          queue: DispatchQueue.global(qos: .background))
         ping.runInBackground = true
+        #if os(iOS)
         ping.allowBackgroundPinging = true
+        #endif
         return ping
     }
 
@@ -264,5 +266,43 @@ final class PingletTests: XCTestCase {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 7)
+    }
+}
+
+class Pinger {
+    static let shared = Pinger()
+    internal init() {}
+
+    private var pinglet: Pinglet?
+    private weak var pingTimer: Timer?
+
+    func start(_ duration: Double) {
+        stop()
+        if pinglet == nil {
+            print("ping init !!")
+            pinglet = try? Pinglet(host: "8.8.8.8",
+                                   configuration: PingConfiguration(interval: 0.1),
+                                   queue: DispatchQueue.global())
+        }
+        pinglet?.runInBackground = true
+        try? pinglet?.startPinging()
+        print("ping start")
+        pingTimer = Timer.scheduledTimer(timeInterval: duration,
+                                         target: self,
+                                         selector: #selector(stop(_:)),
+                                         userInfo: nil,
+                                         repeats: false)
+    }
+
+    @objc
+    func stop(_: Timer? = nil) {
+        if pingTimer != nil {
+            print("ping timer ended")
+        }
+        pingTimer?.invalidate()
+        pingTimer = nil
+        pinglet?.stopPinging()
+        pinglet = nil
+        print("ping stop")
     }
 }

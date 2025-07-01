@@ -334,9 +334,13 @@ public class Pinglet: NSObject, ObservableObject {
             timeoutTimers.removeAll()
 
             // Skip clearing notification listeners if we have been stopped because we're in the background.
+            #if os(iOS)
             if autoHalted == false {
                 notificationCancellables.removeAll()
             }
+            #else
+            notificationCancellables.removeAll()
+            #endif
         }
     }
 
