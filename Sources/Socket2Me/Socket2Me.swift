@@ -223,7 +223,7 @@ public class Socket2Me: NSObject, ObservableObject {
     }
 
     deinit {
-        Log.socket.debug("Socket2Me.deinit")
+        // Log.socket.debug("Socket2Me.deinit")
         tearDown()
     }
 }
