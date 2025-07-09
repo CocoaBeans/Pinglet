@@ -147,7 +147,7 @@ final class PingletTests: XCTestCase {
                 print("Ping Count: \(pings.count)")
                 responses = pings
             }
-            .store(in: &subscriptions)
+            .store(in: &observers)
 
         // Ping for 4 seconds
         try pinglet.startPinging()
@@ -282,6 +282,16 @@ final class PingletTests: XCTestCase {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 7)
+    }
+
+    func testCreateICMPPackage() throws {
+        let identifier: UInt16 = UInt16.random(in: UInt16.min...UInt16.max)
+        var sequenceNumber: UInt16 = 0
+        for i in 0...UInt16.max {
+            let icmp: Data = try pinglet.createICMPPackage(identifier: identifier, sequenceNumber: sequenceNumber)
+            if sequenceNumber == UInt16.max { break }
+            sequenceNumber += 1
+        }
     }
 }
 

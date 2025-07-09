@@ -107,7 +107,7 @@ extension ICMPHeader {
             sum = (sum & 0xffff) + (sum >> 16)
         }
 
-        guard sum < UInt16.max else { throw PingError.checksumOutOfBounds }
+        guard sum <= UInt16.max else { throw PingError.checksumOutOfBounds }
 
         return ~UInt16(sum)
     }
