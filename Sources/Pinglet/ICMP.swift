@@ -26,83 +26,125 @@ import Foundation
 
 // MARK: ICMP
 
-/// Format of IPv4 header
+/// Format of IPv4 header (20 bytes minimum)
 public struct IPHeader: Sendable {
-    public var versionAndHeaderLength: UInt8
-    public var differentiatedServices: UInt8
-    public var totalLength: UInt16
-    public var identification: UInt16
-    public var flagsAndFragmentOffset: UInt16
-    public var timeToLive: UInt8
-    public var `protocol`: UInt8
-    public var headerChecksum: UInt16
-    public var sourceAddress: (UInt8, UInt8, UInt8, UInt8)
-    public var destinationAddress: (UInt8, UInt8, UInt8, UInt8)
+    public let versionAndHeaderLength: UInt8
+    public let differentiatedServices: UInt8
+    public let totalLength: UInt16
+    public let identification: UInt16
+    public let flagsAndFragmentOffset: UInt16
+    public let timeToLive: UInt8
+    public let `protocol`: UInt8
+    public let headerChecksum: UInt16
+    public let sourceAddress: (UInt8, UInt8, UInt8, UInt8)
+    public let destinationAddress: (UInt8, UInt8, UInt8, UInt8)
 
-    init(data: Data) {
-        self = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
+    public static let minSize = 20
+
+    /// Safe manual parsing instead of `load(as:)` which has undefined behavior if:
+    /// - Struct layout doesn't match exactly (padding, alignment differences across platforms)
+    /// - Data is shorter than struct size (reads out of bounds)
+    /// - Endianness differs (network byte order vs host byte order)
+    /// This approach explicitly reads each byte and constructs values with known endianness.
+    init?(data: Data) {
+        guard data.count >= Self.minSize else { return nil }
+        let bytes = [UInt8](data.prefix(Self.minSize))
+
+        versionAndHeaderLength = bytes[0]
+        differentiatedServices = bytes[1]
+        totalLength = UInt16(bytes[2]) << 8 | UInt16(bytes[3])
+        identification = UInt16(bytes[4]) << 8 | UInt16(bytes[5])
+        flagsAndFragmentOffset = UInt16(bytes[6]) << 8 | UInt16(bytes[7])
+        timeToLive = bytes[8]
+        `protocol` = bytes[9]
+        headerChecksum = UInt16(bytes[10]) << 8 | UInt16(bytes[11])
+        sourceAddress = (bytes[12], bytes[13], bytes[14], bytes[15])
+        destinationAddress = (bytes[16], bytes[17], bytes[18], bytes[19])
+    }
+
+    var headerLength: Int {
+        Int(versionAndHeaderLength & 0x0F) * 4
+    }
+
+    var isIPv4: Bool {
+        versionAndHeaderLength & 0xF0 == 0x40
+    }
+
+    var isICMP: Bool {
+        `protocol` == IPPROTO_ICMP
     }
 }
 
-/// ICMP header structure
+/// ICMP header structure (8 bytes + 16 bytes UUID payload = 24 bytes)
 public struct ICMPHeader: Sendable {
-    /// Type of message
-    var type: UInt8
-    /// Type sub code
-    var code: UInt8
-    /// One's complement checksum of struct
-    var checksum: UInt16
-    /// Identifier
-    var identifier: UInt16
+    public let type: UInt8
+    public let code: UInt8
+    public let checksum: UInt16
+    public let identifier: UInt16
+    public let sequenceNumber: UInt16
+    public let payload: [UInt8]
 
-    /// Sequence number
-    var sequenceNumber: UInt16
+    public static let headerSize = 8
+    public static let payloadSize = 16
+    public static let totalSize = headerSize + payloadSize
 
-    /// UUID payload
-    var payload: uuid_t
-
-    var identifierToHost: UInt16 {
+    public var identifierToHost: UInt16 {
         CFSwapInt16BigToHost(identifier)
     }
-    var sequenceNumberToHost: UInt16 {
+    public var sequenceNumberToHost: UInt16 {
         CFSwapInt16BigToHost(sequenceNumber)
     }
 
-    static func from(data: Data) throws -> ICMPHeader {
-        let icmpHeaderSize = MemoryLayout<ICMPHeader>.size
-        let ipHeaderSize = MemoryLayout<IPHeader>.size
-        guard data.count >= icmpHeaderSize
-        else { throw PingError.invalidLength(received: data.count) }
-
-        if data.count >= ipHeaderSize + icmpHeaderSize {
-            guard let headerOffset: Int = ICMPHeader.headerOffset(in: data)
-            else { throw PingError.invalidHeaderOffset }
-
-            return data.withUnsafeBytes { $0.load(fromByteOffset: headerOffset, as: ICMPHeader.self) }
+    /// Safe manual parsing with explicit bounds checking.
+    /// Unlike `load(as:)` / `load(fromByteOffset:as:)` this:
+    /// - Validates data length before reading
+    /// - Doesn't depend on struct memory layout / padding
+    /// - Handles endianness explicitly (network = big-endian)
+    /// - Returns typed errors instead of crashing on malformed packets
+    static func from(data: Data, offset: Int = 0) throws -> ICMPHeader {
+        guard data.count >= offset + Self.totalSize else {
+            throw PingError.invalidLength(received: data.count)
         }
-        else if data.count == icmpHeaderSize {
-            return data.withUnsafeBytes { $0.load(fromByteOffset: 0, as: ICMPHeader.self) }
-        }
-        throw PingError.invalidLength(received: data.count)
+
+        let bytes = [UInt8](data[offset..<offset + Self.totalSize])
+
+        let type = bytes[0]
+        let code = bytes[1]
+        let checksum = UInt16(bytes[2]) << 8 | UInt16(bytes[3])
+        let identifier = UInt16(bytes[4]) << 8 | UInt16(bytes[5])
+        let sequenceNumber = UInt16(bytes[6]) << 8 | UInt16(bytes[6 + 1])
+        let payload = Array(bytes[8..<24])
+
+        return ICMPHeader(
+            type: type,
+            code: code,
+            checksum: checksum,
+            identifier: identifier,
+            sequenceNumber: sequenceNumber,
+            payload: payload
+        )
     }
 }
 
 
 extension ICMPHeader {
     func computeChecksum(additionalPayload: [UInt8] = []) throws -> UInt16 {
-        let typeCode = Data([type, code]).withUnsafeBytes { $0.load(as: UInt16.self) }
+        // Manual byte-wise construction avoids `load(as:)` which assumes
+        // host endianness and exact struct layout. Network byte order is big-endian.
+        let typeCode = UInt16(type) << 8 | UInt16(code)
         var sum: UInt64 = UInt64(typeCode) + UInt64(identifier) + UInt64(sequenceNumber)
-        let payload: [UInt8] = ICMPHeader.convert(payload: payload) + additionalPayload
+        let payload = self.payload + additionalPayload
 
         guard payload.count % 2 == 0 else { throw PingError.unexpectedPayloadLength }
 
         var i = 0
         while i < payload.count {
-            guard payload.indices.contains(i + 1) else { throw PingError.unexpectedPayloadLength }
-            // Convert two 8 byte ints to one 16 byte int
-            sum += Data([payload[i], payload[i + 1]]).withUnsafeBytes { UInt64($0.load(as: UInt16.self)) }
+            // Explicit big-endian word assembly - no unsafe pointer loads
+            let word = UInt16(payload[i]) << 8 | UInt16(payload[i + 1])
+            sum += UInt64(word)
             i += 2
         }
+        // Fold carry bits (one's complement addition)
         while sum >> 16 != 0 {
             sum = (sum & 0xffff) + (sum >> 16)
         }
@@ -112,22 +154,20 @@ extension ICMPHeader {
         return ~UInt16(sum)
     }
 
-    internal static func convert(payload: uuid_t) -> [UInt8] {
-        let p = payload
-        return [p.0, p.1, p.2, p.3, p.4, p.5, p.6, p.7, p.8, p.9, p.10, p.11, p.12, p.13, p.14, p.15].map { UInt8($0) }
-    }
-
+    /// Safe header offset calculation with validation at each step.
+    /// Previous version had a precedence bug: `& 0x0F * 4` parsed as `& (0x0F * 4)`
+    /// instead of `(& 0x0F) * 4`. This version uses explicit parentheses
+    /// and validates IPv4 + ICMP protocol before trusting header length.
     internal static func headerOffset(in ipPacket: Data) -> Int? {
-        guard ipPacket.count >= MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size else { return nil }
+        guard ipPacket.count >= IPHeader.minSize else { return nil }
 
-        let ipHeader: IPHeader = ipPacket.withUnsafeBytes({ $0.load(as: IPHeader.self) })
-        if ipHeader.versionAndHeaderLength & 0xF0 == 0x40 && ipHeader.protocol == IPPROTO_ICMP {
-            let headerLength = Int(ipHeader.versionAndHeaderLength) & 0x0F * MemoryLayout<UInt32>.size
-            if ipPacket.count >= headerLength + MemoryLayout<ICMPHeader>.size {
-                return headerLength
-            }
-        }
-        return nil
+        guard let ipHeader = IPHeader(data: ipPacket) else { return nil }
+        guard ipHeader.isIPv4 && ipHeader.isICMP else { return nil }
+
+        let headerLength = ipHeader.headerLength
+        guard ipPacket.count >= headerLength + ICMPHeader.totalSize else { return nil }
+
+        return headerLength
     }
 }
 

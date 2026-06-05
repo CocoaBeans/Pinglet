@@ -10,22 +10,23 @@ import Combine
 import XCTest
 
 final class Socket2MeTests: XCTestCase {
-    func createSocket() -> Socket2Me {
-        let socket = Socket2Me(destination: try! Destination(host: "1.1.1.1"))
+    func createSocket() throws -> Socket2Me {
+        let socket = Socket2Me(destination: try Destination(host: "1.1.1.1"))
         XCTAssertNotNil(socket)
 
-        while socket.isOpening {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        let openTimeout = Date().addingTimeInterval(5)
+        while socket.isOpening, Date() < openTimeout {
+            Thread.sleep(forTimeInterval: 0.1)
         }
         XCTAssertTrue(socket.isOpen)
 
         return socket
     }
     
-    func testThreadExit() {
+    func testThreadExit() throws {
         var socket: Socket2Me? = .none
         for _ in 0...10 {
-            socket = createSocket()
+            socket = try createSocket()
             XCTAssertNotNil(socket)
             socket = nil
         }

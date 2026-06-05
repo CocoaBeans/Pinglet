@@ -31,70 +31,80 @@ import Socket2Me
 import UIKit
 #endif
 
+/// Closure called when a ping request is sent.
 public typealias RequestObserver = (_ identifier: UInt16, _ sequenceIndex: Int) -> Void
+/// Closure called with each ping response.
 public typealias ResponseObserver = (_ response: PingResponse) -> Void
+/// Closure called when pinging finishes (targetCount reached, stopPinged, or halt() called).
 public typealias FinishedCallback = (_ result: PingResult) -> Void
 
-/// Represents a ping delegate.
-public protocol PingDelegate {
+/// Delegate protocol for receiving ping send and response events.
+public protocol PingDelegate: AnyObject {
     /// Called when a ping response is received.
-    /// - Parameter response: A `PingResponse` object representing the echo reply.
+    /// - Parameter response: The `PingResponse` representing the echo reply.
     func didReceive(response: PingResponse)
+    /// Called when a ping request is sent.
+    /// - Parameters:
+    ///   - identifier: The session identifier for this ping.
+    ///   - sequenceIndex: The sequence number of the sent request.
     func didSend(identifier: UInt16, sequenceIndex: Int)
 }
 
 // MARK: Pinglet
 
-/// Class representing socket info, which contains a `Pinglet` instance and the identifier.
-public class SocketInfo {
-    public weak var pinglet: Pinglet?
-    public let identifier: UInt16
 
-    public init(pinglet: Pinglet, identifier: UInt16) {
-        self.pinglet = pinglet
-        self.identifier = identifier
-    }
-}
 
-/// Represents a single ping instance. A ping instance has a single destination.
+/// Sends ICMP echo requests to a host and receives echo replies.
+///
+/// `Pinglet` supports both single pings (via `targetCount`) and continuous pinging
+/// (when `targetCount` is `nil`). It delivers events via closure observers, Combine
+/// publishers, and the `PingDelegate` protocol.
 public class Pinglet: NSObject, ObservableObject {
-    /// Describes the ping host destination.
 
     // MARK: - Initialization
 
-    /// Ping host
+    /// The ping destination (host and IP address).
     public let destination: Destination
-    /// Ping configuration
+
+    /// Configuration controlling ping interval, timeout, and other behaviors.
     public let configuration: PingConfiguration
-    /// This closure gets called with each ping request.
+
+    /// Closure called when a ping request is sent.
     public var requestObserver: RequestObserver?
+
+    /// Combine publisher for ping requests.
     public var requestPublisher: AnyPublisher<PingRequest, PingError> { requestPassthrough.eraseToAnyPublisher() }
     private var requestPassthrough = PassthroughSubject<PingRequest, PingError>()
 
-    /// This closure gets called with each ping response.
+    /// Closure called when a ping response is received.
     public var responseObserver: ResponseObserver?
+
+    /// Combine publisher for ping responses.
     public var responsePublisher: AnyPublisher<PingResponse, PingError> { responsePassthrough.eraseToAnyPublisher() }
     private var responsePassthrough = PassthroughSubject<PingResponse, PingError>()
 
-    /// This closure gets called when pinging stops, either when `targetCount` is reached or pinging is stopped explicitly with `stop()` or `halt()`.
+    /// Closure called when pinging finishes (targetCount reached, stopPinged, or halt() called).
     public var finished: FinishedCallback?
-    /// This delegate gets called with ping responses.
-    public var delegate: PingDelegate?
-    /// The number of pings to make. Default is `nil`, which means no limit.
+
+    /// Delegate for receiving ping send and response events.
+    public weak var delegate: PingDelegate?
+
+    /// Number of pings to send. `nil` means continuous pinging until `stopPinging()` is called.
     public var targetCount: Int?
 
-    /// The current ping count, starting from 0.
+    /// Current count of successfully sent pings, starting from 0.
     public var currentCount: UInt64 {
         trueSequenceIndex
     }
 
-    /// Array of all ping responses sent to the `observer`.
+    /// Published array of all ping responses received so far.
     @Published
     public private(set) var responses: [PingResponse] = []
 
     internal var pendingRequests: [PingRequest] = []
 
-    /// Flag to enable socket processing on a background thread
+    /// When `true`, the underlying socket is opened on a detached background thread.
+    /// Default is `false`. Set to `true` to avoid blocking the main thread during socket creation.
     public var runInBackground: Bool = false
 
     /// A random identifier which is a part of the ping request.
@@ -129,10 +139,13 @@ public class Pinglet: NSObject, ObservableObject {
     internal var notificationCancellables = Set<AnyCancellable>()
     internal var timeoutTimers = [AnyHashable: Timer]()
 
-    /// Initializes a pinglet.
-    /// - Parameter destination: Specifies the host.
-    /// - Parameter configuration: A configuration object which can be used to customize pinging behavior.
-    /// - Parameter queue: All responses are delivered through this dispatch queue.
+    /// Initializes a `Pinglet` for the given destination.
+    ///
+    /// - Parameters:
+    ///   - destination: The host to ping, created via `Destination`.
+    ///   - configuration: A `PingConfiguration` object customizing interval, timeout, and other behaviors.
+    ///   - queue: The dispatch queue on which observers and publishers deliver events. Defaults to the main queue.
+    /// - Throws: A `PingError` if socket creation fails.
     public init(destination: Destination,
                 configuration: PingConfiguration = PingConfiguration(),
                 queue: DispatchQueue = DispatchQueue.main) throws {
@@ -149,7 +162,8 @@ public class Pinglet: NSObject, ObservableObject {
     }
 
     #if os(iOS)
-    /// A public flag to control whether to halt the pinglet automatically on didEnterBackgroundNotification
+    /// When `true`, the ping continues even after the app enters the background.
+    /// Default is `false`. Ignored on macOS.
     public var allowBackgroundPinging = false
     /// A flag to determine whether the pinglet was halted automatically by an app state change.
     private var autoHalted = false
@@ -235,9 +249,7 @@ public class Pinglet: NSObject, ObservableObject {
                     return .generic(error)
                 }
             }
-            .sink(receiveCompletion: { completion in
-                      print("dataSentPublisher.receiveCompletion: \(completion)")
-                  },
+            .sink(receiveCompletion: { _ in },
                   receiveValue: { (header: ICMPHeader) in
                       let identifier = header.identifierToHost
                       let sequenceIndex = header.sequenceNumberToHost
@@ -306,15 +318,8 @@ public class Pinglet: NSObject, ObservableObject {
                     return .generic(error)
                 }
             }
-            .sink(receiveCompletion: { [unowned self] (completion: Subscribers.Completion<Error>) in
-                      switch completion {
-                      case .finished:
-                          print("Socket \(String(describing: socket)) was closed")
-                      case let .failure(reason):
-                          print("Socket \(String(describing: socket)) was closed because: \(reason)")
-                      }
-                      print("receiveCompletion: \(completion)")
-                  },
+            .sink(receiveCompletion: { (_: Subscribers.Completion<Error>) in
+                      },
                   receiveValue: { [unowned self] (response: PingResponse) in
                       // Log.ping.trace("Socket sink receiveValue: \(response.sequenceIndex)")
                       informObservers(of: response)
@@ -487,11 +492,15 @@ public class Pinglet: NSObject, ObservableObject {
             }
         }
         guard let socket = socket else {
-            throw "Failed to create socket!"
+            throw PingError.socketNil
         }
 
-        while !socket.isOpen, socket.isOpening {
+        let openTimeout = Date().addingTimeInterval(configuration.timeoutInterval)
+        while !socket.isOpen, socket.isOpening, Date() < openTimeout {
             RunLoop.current.run(until: Date().advanced(by: 0.1))
+        }
+        guard socket.isOpen else {
+            throw PingError.socketNil
         }
 
         killSwitch = false

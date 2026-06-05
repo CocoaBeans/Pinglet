@@ -42,11 +42,11 @@ final class PingletTests: XCTestCase {
     private var pingRuntime: TimeInterval = 5
     private var testTimeout: TimeInterval = 11
 
-    static var defaultPinglet: Pinglet {
+    static func defaultPinglet() throws -> Pinglet {
         let config = PingConfiguration(interval: 1, timeout: 3)
-        let ping: Pinglet = try! Pinglet(host: "1.1.1.1",
-                                         configuration: config,
-                                         queue: DispatchQueue.global(qos: .background))
+        let ping = try Pinglet(host: "1.1.1.1",
+                               configuration: config,
+                               queue: DispatchQueue.global(qos: .background))
         ping.runInBackground = true
         #if os(iOS)
         ping.allowBackgroundPinging = true
@@ -54,11 +54,11 @@ final class PingletTests: XCTestCase {
         return ping
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         pingRuntime = 5
         testTimeout = 11
-        pinglet = Self.defaultPinglet
+        pinglet = try Self.defaultPinglet()
 
         // Setup some debug observers for the request and response publishers of the default pinglet for tests.
         // Individual tests might invalidate these if `pinglet` gets overwritten as part of the test.
