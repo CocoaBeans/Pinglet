@@ -261,13 +261,19 @@ final class PingletTests: XCTestCase {
 
     func testStopViaTimer() throws {
         let config = PingConfiguration(interval: 0.001, timeout: pinglet.configuration.timeoutInterval)
-        pingRuntime = 1
-        pinglet = try Pinglet(destination: pinglet.destination, configuration: config)
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(888)) {
+        let pinglet = try Pinglet(destination: pinglet.destination, configuration: config)
+        try pinglet.startPinging()
+
+        let expectation = XCTestExpectation()
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(3)) {
             print("stopped via timer on global queue")
-            self.pinglet.stopPinging()
+            pinglet.stopPinging()
+            expectation.fulfill()
         }
-        try testSimplePing()
+
+        wait(for: [expectation], timeout: 6)
+        XCTAssert(pinglet.responses.isEmpty == false)
+        print("total pings: \(pinglet.responses.count)")
     }
 
     func testLogErrorCodes() {
