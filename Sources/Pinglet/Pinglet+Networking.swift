@@ -36,7 +36,14 @@ extension Pinglet {
         let icmpHeader: ICMPHeader = try ICMPHeader.from(data: data)
         let payload: Data = data.subdata(in: (data.count - payloadSize) ..< data.count)
 
-        let uuid = UUID(uuid: icmpHeader.payload)
+        let payloadBytes = icmpHeader.payload
+        guard payloadBytes.count >= 16 else { throw PingError.invalidLength(received: data.count) }
+        let uuid = UUID(uuid: (
+            payloadBytes[0], payloadBytes[1], payloadBytes[2], payloadBytes[3],
+            payloadBytes[4], payloadBytes[5], payloadBytes[6], payloadBytes[7],
+            payloadBytes[8], payloadBytes[9], payloadBytes[10], payloadBytes[11],
+            payloadBytes[12], payloadBytes[13], payloadBytes[14], payloadBytes[15]
+        ))
         guard uuid == fingerprint else {
             // Wrong handler, ignore this response
             return false

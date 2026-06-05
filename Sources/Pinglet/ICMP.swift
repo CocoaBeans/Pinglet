@@ -79,7 +79,7 @@ public struct IPHeader: Sendable {
 public struct ICMPHeader: Sendable {
     public let type: UInt8
     public let code: UInt8
-    public let checksum: UInt16
+    public var checksum: UInt16
     public let identifier: UInt16
     public let sequenceNumber: UInt16
     public let payload: [UInt8]

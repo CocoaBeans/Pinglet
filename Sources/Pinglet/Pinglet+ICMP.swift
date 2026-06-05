@@ -35,7 +35,7 @@ extension Pinglet {
                                 checksum: 0,
                                 identifier: CFSwapInt16HostToBig(identifier),
                                 sequenceNumber: CFSwapInt16HostToBig(sequenceNumber),
-                                payload: fingerprint.uuid)
+                                payload: withUnsafeBytes(of: fingerprint.uuid) { Array($0) })
 
         let delta = configuration.payloadSize - MemoryLayout<uuid_t>.size
         var additional = [UInt8]()
