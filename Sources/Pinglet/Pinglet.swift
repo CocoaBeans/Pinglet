@@ -273,7 +273,10 @@ public class Pinglet: NSObject, ObservableObject {
 
                 do {
                     let _ = try self?.validateResponse(from: data)
-                    let icmp: ICMPHeader = try ICMPHeader.from(data: data)
+                    guard let headerOffset = ICMPHeader.headerOffset(in: data) else {
+                        throw PingError.invalidHeaderOffset
+                    }
+                    let icmp: ICMPHeader = try ICMPHeader.from(data: data, offset: headerOffset)
                     sequence = icmp.sequenceNumberToHost
                     id = icmp.identifierToHost
                 }

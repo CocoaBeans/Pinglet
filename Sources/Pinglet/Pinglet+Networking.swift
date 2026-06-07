@@ -26,14 +26,14 @@ import Foundation
 
 extension Pinglet {
     internal func validateResponse(from data: Data) throws -> Bool {
-        guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size else {
+        guard data.count >= ICMPHeader.totalSize + IPHeader.minSize else {
             throw PingError.invalidLength(received: data.count)
         }
 
         guard let headerOffset = ICMPHeader.headerOffset(in: data) else { throw PingError.invalidHeaderOffset }
-        let payloadSize = data.count - headerOffset - MemoryLayout<ICMPHeader>.size
+        let payloadSize = data.count - headerOffset - ICMPHeader.totalSize
 
-        let icmpHeader: ICMPHeader = try ICMPHeader.from(data: data)
+        let icmpHeader: ICMPHeader = try ICMPHeader.from(data: data, offset: headerOffset)
         let payload: Data = data.subdata(in: (data.count - payloadSize) ..< data.count)
 
         let payloadBytes = icmpHeader.payload
@@ -60,10 +60,10 @@ extension Pinglet {
         guard icmpHeader.code == 0 else {
             throw PingError.invalidCode(received: icmpHeader.code)
         }
-        guard CFSwapInt16BigToHost(icmpHeader.identifier) == identifier else {
+        guard icmpHeader.identifier == identifier else {
             throw PingError.identifierMismatch(received: icmpHeader.identifier, expected: identifier)
         }
-        let sequenceNumberUInt16 = CFSwapInt16BigToHost(icmpHeader.sequenceNumber)
+        let sequenceNumberUInt16 = icmpHeader.sequenceNumber
         let receivedSequenceIndex = Int(sequenceNumberUInt16)
         guard pendingRequest(for: receivedSequenceIndex) != nil else {
             if erroredIndices.contains(receivedSequenceIndex) {

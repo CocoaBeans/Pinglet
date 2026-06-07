@@ -476,9 +476,10 @@ final class PingletICMPParsingTests: XCTestCase {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ]
         let header = try ICMPHeader.from(data: Data(bytes))
-        // identifier is stored as big-endian, identifierToHost converts to host order
-        XCTAssertEqual(header.identifier, 1) // stored as big-endian 0x0001
-        XCTAssertEqual(header.identifierToHost, CFSwapInt16BigToHost(1))
+        // from(data:) decodes the big-endian wire bytes into a host-order value,
+        // so identifier and identifierToHost are both the host value 1.
+        XCTAssertEqual(header.identifier, 1)
+        XCTAssertEqual(header.identifierToHost, 1)
     }
 
     func testICMPHeaderSequenceNumberToHost() throws {
@@ -488,8 +489,8 @@ final class PingletICMPParsingTests: XCTestCase {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ]
         let header = try ICMPHeader.from(data: Data(bytes))
-        XCTAssertEqual(header.sequenceNumber, 0x8000) // stored as big-endian
-        XCTAssertEqual(header.sequenceNumberToHost, CFSwapInt16BigToHost(0x8000))
+        XCTAssertEqual(header.sequenceNumber, 0x8000)
+        XCTAssertEqual(header.sequenceNumberToHost, 0x8000)
     }
 
     // MARK: Checksum
@@ -665,14 +666,22 @@ final class PingletICMPPackageTests: XCTestCase {
 
         let package = try pinglet.createICMPPackage(identifier: identifier, sequenceNumber: sequenceNumber)
 
-        // NOTE: createICMPPackage uses MemoryLayout to serialize the struct, which includes
-        // opaque Array storage bytes rather than inline payload. The resulting Data cannot
-        // be round-tripped through ICMPHeader.from(data:). These tests verify the package
-        // has the expected structure and checks that the checksum was computed.
+        // Default payload is the 16-byte UUID fingerprint with no additional bytes.
         let config = PingConfiguration()
         let delta = config.payloadSize - MemoryLayout<uuid_t>.size
-        let expectedLength = MemoryLayout<ICMPHeader>.size + delta
-        XCTAssertGreaterThanOrEqual(package.count, expectedLength)
+        XCTAssertEqual(package.count, ICMPHeader.totalSize + delta)
+
+        // The package round-trips through ICMPHeader.from and carries the fingerprint
+        // payload and a self-consistent checksum.
+        let parsed = try ICMPHeader.from(data: package)
+        XCTAssertEqual(parsed.type, ICMPType.EchoRequest.rawValue)
+        XCTAssertEqual(parsed.code, 0)
+        XCTAssertEqual(parsed.identifier, identifier)
+        XCTAssertEqual(parsed.sequenceNumber, sequenceNumber)
+
+        let expectedPayload = withUnsafeBytes(of: pinglet.fingerprint.uuid) { Array($0) }
+        XCTAssertEqual(parsed.payload, expectedPayload)
+        XCTAssertEqual(parsed.checksum, try parsed.computeChecksum())
     }
 
     func testCreateICMPPackageWithExtraPayload() throws {
@@ -683,7 +692,7 @@ final class PingletICMPPackageTests: XCTestCase {
 
         let package = try pinglet.createICMPPackage(identifier: 0, sequenceNumber: 0)
 
-        let expectedLength = MemoryLayout<ICMPHeader>.size + (32 - MemoryLayout<uuid_t>.size)
+        let expectedLength = ICMPHeader.totalSize + (32 - MemoryLayout<uuid_t>.size)
         XCTAssertEqual(package.count, expectedLength)
     }
 

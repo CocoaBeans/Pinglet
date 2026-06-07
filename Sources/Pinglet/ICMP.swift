@@ -88,12 +88,12 @@ public struct ICMPHeader: Sendable {
     public static let payloadSize = 16
     public static let totalSize = headerSize + payloadSize
 
-    public var identifierToHost: UInt16 {
-        CFSwapInt16BigToHost(identifier)
-    }
-    public var sequenceNumberToHost: UInt16 {
-        CFSwapInt16BigToHost(sequenceNumber)
-    }
+    /// `identifier` and `sequenceNumber` are stored in host byte order:
+    /// `from(data:offset:)` decodes the big-endian wire bytes, and
+    /// `createICMPPackage` constructs them from host-order values. These
+    /// accessors therefore return the fields directly.
+    public var identifierToHost: UInt16 { identifier }
+    public var sequenceNumberToHost: UInt16 { sequenceNumber }
 
     /// Safe manual parsing with explicit bounds checking.
     /// Unlike `load(as:)` / `load(fromByteOffset:as:)` this:
@@ -123,6 +123,28 @@ public struct ICMPHeader: Sendable {
             sequenceNumber: sequenceNumber,
             payload: payload
         )
+    }
+
+    /// Serializes the header to wire format in network (big-endian) byte order —
+    /// the inverse of `from(data:offset:)`. Emits the 8-byte header followed by
+    /// `payload`, but not any trailing additional payload.
+    ///
+    /// The struct cannot be serialized with `Data(bytes:count:)` because `payload`
+    /// is a heap-backed `Array`; a raw memory copy would emit the array's pointer
+    /// instead of the payload bytes.
+    func serialized() -> Data {
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(Self.headerSize + payload.count)
+        bytes.append(type)
+        bytes.append(code)
+        bytes.append(UInt8(checksum >> 8))
+        bytes.append(UInt8(checksum & 0xFF))
+        bytes.append(UInt8(identifier >> 8))
+        bytes.append(UInt8(identifier & 0xFF))
+        bytes.append(UInt8(sequenceNumber >> 8))
+        bytes.append(UInt8(sequenceNumber & 0xFF))
+        bytes.append(contentsOf: payload)
+        return Data(bytes)
     }
 }
 
