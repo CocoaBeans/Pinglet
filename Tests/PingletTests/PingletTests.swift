@@ -42,11 +42,11 @@ final class PingletTests: XCTestCase {
     private var pingRuntime: TimeInterval = 5
     private var testTimeout: TimeInterval = 11
 
-    static var defaultPinglet: Pinglet {
+    static func defaultPinglet() throws -> Pinglet {
         let config = PingConfiguration(interval: 1, timeout: 3)
-        let ping: Pinglet = try! Pinglet(host: "1.1.1.1",
-                                         configuration: config,
-                                         queue: DispatchQueue.global(qos: .background))
+        let ping = try Pinglet(host: "1.1.1.1",
+                               configuration: config,
+                               queue: DispatchQueue.global(qos: .background))
         ping.runInBackground = true
         #if os(iOS)
         ping.allowBackgroundPinging = true
@@ -54,11 +54,11 @@ final class PingletTests: XCTestCase {
         return ping
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         pingRuntime = 5
         testTimeout = 11
-        pinglet = Self.defaultPinglet
+        pinglet = try Self.defaultPinglet()
 
         // Setup some debug observers for the request and response publishers of the default pinglet for tests.
         // Individual tests might invalidate these if `pinglet` gets overwritten as part of the test.
@@ -261,13 +261,19 @@ final class PingletTests: XCTestCase {
 
     func testStopViaTimer() throws {
         let config = PingConfiguration(interval: 0.001, timeout: pinglet.configuration.timeoutInterval)
-        pingRuntime = 1
-        pinglet = try Pinglet(destination: pinglet.destination, configuration: config)
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(888)) {
+        let pinglet = try Pinglet(destination: pinglet.destination, configuration: config)
+        try pinglet.startPinging()
+
+        let expectation = XCTestExpectation()
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(3)) {
             print("stopped via timer on global queue")
-            self.pinglet.stopPinging()
+            pinglet.stopPinging()
+            expectation.fulfill()
         }
-        try testSimplePing()
+
+        wait(for: [expectation], timeout: 6)
+        XCTAssert(pinglet.responses.isEmpty == false)
+        print("total pings: \(pinglet.responses.count)")
     }
 
     func testLogErrorCodes() {

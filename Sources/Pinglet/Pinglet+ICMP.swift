@@ -30,12 +30,13 @@ extension Pinglet {
 
     /// Creates an ICMP package.
     internal func createICMPPackage(identifier: UInt16, sequenceNumber: UInt16) throws -> Data {
+        let payload: [UInt8] = withUnsafeBytes(of: fingerprint.uuid) { Array($0) }
         var header = ICMPHeader(type: ICMPType.EchoRequest.rawValue,
                                 code: 0,
                                 checksum: 0,
-                                identifier: CFSwapInt16HostToBig(identifier),
-                                sequenceNumber: CFSwapInt16HostToBig(sequenceNumber),
-                                payload: fingerprint.uuid)
+                                identifier: identifier,
+                                sequenceNumber: sequenceNumber,
+                                payload: payload)
 
         let delta = configuration.payloadSize - MemoryLayout<uuid_t>.size
         var additional = [UInt8]()
@@ -43,11 +44,12 @@ extension Pinglet {
             additional = (0..<delta).map { _ in UInt8.random(in: UInt8.min...UInt8.max) }
         }
 
-        let checksum = try header.computeChecksum(additionalPayload: additional)
-        header.checksum = checksum
+        header.checksum = try header.computeChecksum(additionalPayload: additional)
 
-        let package = Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size) + Data(additional)
-        return package
+        // Serialize explicitly in network byte order. The struct cannot be copied
+        // with `Data(bytes:count:)` because `payload` is a heap-backed Array — a raw
+        // copy would emit the array's pointer instead of the UUID fingerprint bytes.
+        return header.serialized() + Data(additional)
     }
 
 }
