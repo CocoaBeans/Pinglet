@@ -1021,3 +1021,93 @@ final class PingletModelTests: XCTestCase {
         XCTAssertEqual(delegate.lastReceivedResponse?.duration, 0.01)
     }
 }
+
+// MARK: - Receive Path (regression guards)
+
+final class PingletReceivePathTests: XCTestCase {
+
+    /// A received echo *reply* echoes our request verbatim except the type flips
+    /// from EchoRequest (8) to EchoReply (0). Builds one for `pinglet` carrying
+    /// its identifier / fingerprint, with a self-consistent checksum.
+    private func makeEchoReply(for pinglet: Pinglet, sequence: UInt16) throws -> Data {
+        let request = try pinglet.createICMPPackage(identifier: pinglet.identifier, sequenceNumber: sequence)
+        let echoed = try ICMPHeader.from(data: request)
+        var reply = ICMPHeader(type: ICMPType.EchoReply.rawValue,
+                               code: 0,
+                               checksum: 0,
+                               identifier: echoed.identifier,
+                               sequenceNumber: echoed.sequenceNumber,
+                               payload: echoed.payload)
+        reply.checksum = try reply.computeChecksum()
+        return reply.serialized()
+    }
+
+    /// A minimal IPv4 header as Darwin's raw/datagram socket delivers it: 20 bytes,
+    /// `ip_len` in host byte order, protocol = ICMP, version/IHL = 0x45.
+    private func syntheticIPHeader(icmpLength: Int) -> Data {
+        var b = [UInt8](repeating: 0, count: IPHeader.minSize)
+        b[0] = 0x45                                  // IPv4, 5-word (20-byte) header
+        let len = UInt16(icmpLength)                 // ip_len, host byte order
+        b[2] = UInt8(len & 0xFF); b[3] = UInt8(len >> 8)
+        b[8] = 57                                    // TTL
+        b[9] = UInt8(IPPROTO_ICMP)                   // protocol = ICMP
+        b[12] = 1; b[13] = 1; b[14] = 1; b[15] = 1   // source 1.1.1.1
+        return Data(b)
+    }
+
+    /// Regression guard for the offset bug (findings 2/3): a full IP-header + ICMP
+    /// echo reply must validate. Under the old `ICMPHeader.from(data:)` (offset 0)
+    /// the IP header was parsed as the ICMP header, so this threw / failed.
+    func testValidateResponseAcceptsEchoReply() throws {
+        let pinglet = try Pinglet(host: "1.1.1.1")
+        let sequence: UInt16 = 5
+
+        let icmp = try makeEchoReply(for: pinglet, sequence: sequence)
+        let packet = syntheticIPHeader(icmpLength: icmp.count) + icmp
+
+        pinglet.pendingRequests.append(PingRequest(identifier: pinglet.identifier,
+                                                   ipAddress: "1.1.1.1",
+                                                   sequenceIndex: sequence,
+                                                   trueSequenceIndex: 0))
+
+        XCTAssertTrue(try pinglet.validateResponse(from: packet))
+    }
+
+    /// A reply carrying a different fingerprint belongs to another session and must
+    /// be ignored (returns false, not a throw). The fingerprint check runs before
+    /// the checksum check, so flipping one payload byte is enough to trigger it.
+    func testValidateResponseRejectsForeignFingerprint() throws {
+        let pinglet = try Pinglet(host: "1.1.1.1")
+        let sequence: UInt16 = 5
+
+        var icmp = [UInt8](try makeEchoReply(for: pinglet, sequence: sequence))
+        icmp[ICMPHeader.headerSize] ^= 0xFF          // corrupt the first payload byte
+        let packet = syntheticIPHeader(icmpLength: icmp.count) + Data(icmp)
+
+        pinglet.pendingRequests.append(PingRequest(identifier: pinglet.identifier,
+                                                   ipAddress: "1.1.1.1",
+                                                   sequenceIndex: sequence,
+                                                   trueSequenceIndex: 0))
+
+        XCTAssertFalse(try pinglet.validateResponse(from: packet))
+    }
+
+    /// Regression guard for the Darwin byte-order fix: `ip_len` / `ip_off` arrive in
+    /// host order, `ip_id` / `ip_sum` in network order. A uniform big-endian decode
+    /// would read `totalLength` as 6144 instead of 24.
+    func testIPHeaderDarwinByteOrder() throws {
+        var b = [UInt8](repeating: 0, count: IPHeader.minSize)
+        b[0] = 0x45
+        b[9] = UInt8(IPPROTO_ICMP)
+        b[2] = 0x18; b[3] = 0x00      // ip_len = 24,     host order (little-endian)
+        b[4] = 0x12; b[5] = 0x34      // ip_id  = 0x1234, network order
+        b[6] = 0x40; b[7] = 0x00      // ip_off = 0x0040, host order
+        b[10] = 0xAB; b[11] = 0xCD    // ip_sum = 0xABCD, network order
+
+        let header = try XCTUnwrap(IPHeader(data: Data(b)))
+        XCTAssertEqual(header.totalLength, 24)               // host order
+        XCTAssertEqual(header.flagsAndFragmentOffset, 0x40)  // host order
+        XCTAssertEqual(header.identification, 0x1234)        // network order
+        XCTAssertEqual(header.headerChecksum, 0xABCD)        // network order
+    }
+}
