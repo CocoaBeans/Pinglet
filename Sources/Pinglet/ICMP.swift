@@ -106,13 +106,15 @@ public struct ICMPHeader: Sendable {
             throw PingError.invalidLength(received: data.count)
         }
 
-        let bytes = [UInt8](data[offset..<offset + Self.totalSize])
+        // Anchor to startIndex so a sliced Data (non-zero startIndex) can't trap.
+        let start = data.startIndex + offset
+        let bytes = [UInt8](data[start ..< start + Self.totalSize])
 
         let type = bytes[0]
         let code = bytes[1]
         let checksum = UInt16(bytes[2]) << 8 | UInt16(bytes[3])
         let identifier = UInt16(bytes[4]) << 8 | UInt16(bytes[5])
-        let sequenceNumber = UInt16(bytes[6]) << 8 | UInt16(bytes[6 + 1])
+        let sequenceNumber = UInt16(bytes[6]) << 8 | UInt16(bytes[7])
         let payload = Array(bytes[8..<24])
 
         return ICMPHeader(

@@ -37,7 +37,6 @@ extension Pinglet {
         let payload: Data = data.subdata(in: (data.count - payloadSize) ..< data.count)
 
         let payloadBytes = icmpHeader.payload
-        guard payloadBytes.count >= 16 else { throw PingError.invalidLength(received: data.count) }
         let uuid = UUID(uuid: (
             payloadBytes[0], payloadBytes[1], payloadBytes[2], payloadBytes[3],
             payloadBytes[4], payloadBytes[5], payloadBytes[6], payloadBytes[7],

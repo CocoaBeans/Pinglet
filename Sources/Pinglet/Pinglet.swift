@@ -303,7 +303,7 @@ public class Pinglet: NSObject, ObservableObject {
                     return nil
                 }
 
-                let ipHeader: IPHeader = data.withUnsafeBytes { $0.load(as: IPHeader.self) }
+                let ipHeader: IPHeader? = IPHeader(data: data)
                 return PingResponse(identifier: request.identifier,
                         ipAddress: request.ipAddress,
                         sequenceIndex: request.sequenceIndex,
