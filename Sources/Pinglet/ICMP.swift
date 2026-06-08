@@ -46,18 +46,28 @@ public struct IPHeader: Sendable {
     /// - Data is shorter than struct size (reads out of bounds)
     /// - Endianness differs (network byte order vs host byte order)
     /// This approach explicitly reads each byte and constructs values with known endianness.
+    ///
+    /// Byte order note: this header is parsed from packets delivered by Darwin's
+    /// BSD-derived raw/datagram ICMP socket, which (like classic BSD `ip_input`)
+    /// hands `ip_len` and `ip_off` to userspace in **host** byte order — and
+    /// `ip_len` already reduced by the header length — while leaving `ip_id` and
+    /// `ip_sum` in network byte order. So `totalLength` and `flagsAndFragmentOffset`
+    /// are read host-order (low-byte-first; Apple platforms are little-endian) and
+    /// the remaining multi-byte fields are read network (big-endian) order.
     init?(data: Data) {
         guard data.count >= Self.minSize else { return nil }
         let bytes = [UInt8](data.prefix(Self.minSize))
 
         versionAndHeaderLength = bytes[0]
         differentiatedServices = bytes[1]
-        totalLength = UInt16(bytes[2]) << 8 | UInt16(bytes[3])
+        // ip_len / ip_off: host byte order (Darwin raw-socket convention)
+        totalLength = UInt16(bytes[2]) | UInt16(bytes[3]) << 8
+        flagsAndFragmentOffset = UInt16(bytes[6]) | UInt16(bytes[7]) << 8
+        // ip_id / ip_sum: network byte order
         identification = UInt16(bytes[4]) << 8 | UInt16(bytes[5])
-        flagsAndFragmentOffset = UInt16(bytes[6]) << 8 | UInt16(bytes[7])
+        headerChecksum = UInt16(bytes[10]) << 8 | UInt16(bytes[11])
         timeToLive = bytes[8]
         `protocol` = bytes[9]
-        headerChecksum = UInt16(bytes[10]) << 8 | UInt16(bytes[11])
         sourceAddress = (bytes[12], bytes[13], bytes[14], bytes[15])
         destinationAddress = (bytes[16], bytes[17], bytes[18], bytes[19])
     }
