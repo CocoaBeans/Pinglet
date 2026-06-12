@@ -98,21 +98,24 @@ final class Socket2MeTests: XCTestCase {
 
     // MARK: - Destination
 
-    func testDestinationValidHost() throws {
-        let dest = try Destination(host: "1.1.1.1")
+    func testDestinationValidHost() async throws {
+        let dest = try await Destination(host: "1.1.1.1")
         XCTAssertEqual(dest.host, "1.1.1.1")
         XCTAssertEqual(dest.ip, "1.1.1.1")
         XCTAssertNotNil(dest.socketAddress)
     }
 
-    func testDestinationAlternateHost() throws {
-        let dest = try Destination(host: "8.8.8.8")
+    func testDestinationAlternateHost() async throws {
+        let dest = try await Destination(host: "8.8.8.8")
         XCTAssertEqual(dest.host, "8.8.8.8")
         XCTAssertEqual(dest.ip, "8.8.8.8")
     }
 
-    func testDestinationInvalidHost() {
-        XCTAssertThrowsError(try Destination(host: "thishostdoesnotexistzzz.example.com")) { error in
+    func testDestinationInvalidHost() async {
+        do {
+            _ = try await Destination(host: "thishostdoesnotexistzzz.example.com")
+            XCTFail("Expected SocketError")
+        } catch {
             guard let socketError = error as? SocketError else {
                 return XCTFail("Expected SocketError")
             }
@@ -134,8 +137,8 @@ final class Socket2MeTests: XCTestCase {
         XCTAssertEqual(dest.ipv4Address, data)
     }
 
-    func testDestinationSocketAddressProperty() throws {
-        let dest = try Destination(host: "127.0.0.1")
+    func testDestinationSocketAddressProperty() async throws {
+        let dest = try await Destination(host: "127.0.0.1")
         XCTAssertEqual(dest.ip, "127.0.0.1")
         let addr = dest.socketAddress
         XCTAssertNotNil(addr)
@@ -230,7 +233,7 @@ final class Socket2MeTests: XCTestCase {
 
     @discardableResult
     func createSocket() throws -> Socket2Me {
-        let socket = Socket2Me(destination: try Destination(host: "1.1.1.1"))
+        let socket = Socket2Me(destination: try Destination(ipv4String: "1.1.1.1"))
 
         let openTimeout = Date().addingTimeInterval(5)
         while socket.isOpening, Date() < openTimeout {

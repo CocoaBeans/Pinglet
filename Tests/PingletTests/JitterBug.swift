@@ -37,6 +37,6 @@ class JitterBug: NSObject, ObservableObject {
 
     func start() throws {
         let config = PingConfiguration(interval: 0.1, timeout: 1)
-        pinglet = try Pinglet(host: "1.1.1.1", configuration: config, queue: queue)
+        pinglet = try Pinglet(ipv4Address: "1.1.1.1", config: config, queue: queue)
     }
 }
