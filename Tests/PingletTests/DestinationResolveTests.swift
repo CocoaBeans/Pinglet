@@ -46,4 +46,19 @@ struct DestinationResolveTests {
             _ = try await Destination.resolve(host: "thishostdoesnotexistzzz.example.com")
         }
     }
+
+    @Test("init(ipv4String:) builds a destination from a literal address")
+    func ipv4StringInitSucceeds() throws {
+        let destination = try Destination(ipv4String: Self.loopbackAddress)
+        #expect(destination.host == Self.loopbackAddress)
+        #expect(destination.ip == Self.loopbackAddress)
+    }
+
+    @Test("init(ipv4String:) throws for non-IPv4 input instead of silently corrupting",
+          arguments: ["example.com", "not-an-ip", "256.1.1.1", "1.1.1", ""])
+    func ipv4StringInitRejectsInvalidInput(_ invalid: String) {
+        #expect(throws: SocketError.addressLookupError) {
+            _ = try Destination(ipv4String: invalid)
+        }
+    }
 }

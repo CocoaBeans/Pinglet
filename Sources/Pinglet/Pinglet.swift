@@ -199,7 +199,7 @@ public class Pinglet: NSObject, ObservableObject {
     public convenience init(ipv4Address: String,
                             config configuration: PingConfiguration = PingConfiguration(),
                             queue: DispatchQueue = DispatchQueue.main) throws {
-        let destination = Destination(ipv4String: ipv4Address)
+        let destination = try Destination(ipv4String: ipv4Address)
         try self.init(destination: destination, configuration: configuration, queue: queue)
     }
 

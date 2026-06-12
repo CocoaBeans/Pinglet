@@ -44,14 +44,21 @@ public struct Destination {
 
     /// Initializes a `Destination` from a literal IPv4 address string, building the
     /// socket address directly. Unlike `init(host:)`, this performs no DNS resolution
-    /// and therefore never blocks or fails.
+    /// and therefore never blocks.
+    ///
+    /// Validation uses `inet_pton`, so a non-numeric or malformed input fails loudly
+    /// rather than silently yielding a garbage address (as `inet_addr` would).
     /// - Parameter ipv4String: A dotted-decimal IPv4 address (e.g. `"1.1.1.1"`).
-    public init(ipv4String: String) {
+    /// - Throws: `SocketError.addressLookupError` if `ipv4String` is not a valid
+    ///   dotted-decimal IPv4 address.
+    public init(ipv4String: String) throws {
         var socketAddress = sockaddr_in()
         socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         socketAddress.sin_family = UInt8(AF_INET)
         socketAddress.sin_port = 0
-        socketAddress.sin_addr.s_addr = inet_addr(ipv4String.cString(using: .utf8))
+        guard inet_pton(AF_INET, ipv4String, &socketAddress.sin_addr) == 1 else {
+            throw SocketError.addressLookupError
+        }
         self.host = ipv4String
         self.ipv4Address = Data(bytes: &socketAddress, count: MemoryLayout<sockaddr_in>.size)
     }
