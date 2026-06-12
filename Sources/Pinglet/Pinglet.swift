@@ -199,15 +199,7 @@ public class Pinglet: NSObject, ObservableObject {
     public convenience init(ipv4Address: String,
                             config configuration: PingConfiguration = PingConfiguration(),
                             queue: DispatchQueue = DispatchQueue.main) throws {
-        var socketAddress = sockaddr_in()
-
-        socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        socketAddress.sin_family = UInt8(AF_INET)
-        socketAddress.sin_port = 0
-        socketAddress.sin_addr.s_addr = inet_addr(ipv4Address.cString(using: .utf8))
-        let data = Data(bytes: &socketAddress, count: MemoryLayout<sockaddr_in>.size)
-
-        let destination = Destination(host: ipv4Address, ipv4Address: data)
+        let destination = Destination(ipv4Address: ipv4Address)
         try self.init(destination: destination, configuration: configuration, queue: queue)
     }
 
@@ -216,11 +208,28 @@ public class Pinglet: NSObject, ObservableObject {
     /// - Parameter configuration: A configuration object which can be used to customize pinging behavior.
     /// - Parameter queue: All responses are delivered through this dispatch queue.
     /// - Throws: A `PingError` if the given host could not be resolved.
+    @available(*, deprecated, message: "Blocking DNS resolution. Use 'init(host:configuration:queue:) async throws' instead.")
     public convenience init(host: String,
                             configuration: PingConfiguration = PingConfiguration(),
                             queue: DispatchQueue = DispatchQueue.main) throws {
         let result = try Destination.getIPv4AddressFromHost(host: host)
         let destination = Destination(host: host, ipv4Address: result)
+        try self.init(destination: destination, configuration: configuration, queue: queue)
+    }
+
+    /// Initializes a pinglet from a given host string, resolving the host asynchronously.
+    ///
+    /// Unlike the synchronous overload, DNS resolution does not block the calling thread —
+    /// it is awaited via `Destination.resolve(host:)`. Prefer this initializer from any
+    /// `async` context.
+    /// - Parameter host: A string describing the host. This can be an IP address or host name.
+    /// - Parameter configuration: A configuration object which can be used to customize pinging behavior.
+    /// - Parameter queue: All responses are delivered through this dispatch queue.
+    /// - Throws: A `PingError` if the given host could not be resolved.
+    public convenience init(host: String,
+                            configuration: PingConfiguration = PingConfiguration(),
+                            queue: DispatchQueue = DispatchQueue.main) async throws {
+        let destination = try await Destination(host: host)
         try self.init(destination: destination, configuration: configuration, queue: queue)
     }
 

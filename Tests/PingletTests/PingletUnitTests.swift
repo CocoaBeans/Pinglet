@@ -659,8 +659,8 @@ final class PingletICMPParsingTests: XCTestCase {
 
 final class PingletICMPPackageTests: XCTestCase {
 
-    func testCreateICMPPackage() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testCreateICMPPackage() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let identifier: UInt16 = 42
         let sequenceNumber: UInt16 = 7
 
@@ -684,11 +684,11 @@ final class PingletICMPPackageTests: XCTestCase {
         XCTAssertEqual(parsed.checksum, try parsed.computeChecksum())
     }
 
-    func testCreateICMPPackageWithExtraPayload() throws {
+    func testCreateICMPPackageWithExtraPayload() async throws {
         let config = PingConfiguration(interval: 1, timeout: 5)
         var mutableConfig = config
         mutableConfig.payloadSize = 32
-        let pinglet = try Pinglet(host: "1.1.1.1", configuration: mutableConfig)
+        let pinglet = try await Pinglet(host: "1.1.1.1", configuration: mutableConfig)
 
         let package = try pinglet.createICMPPackage(identifier: 0, sequenceNumber: 0)
 
@@ -696,8 +696,8 @@ final class PingletICMPPackageTests: XCTestCase {
         XCTAssertEqual(package.count, expectedLength)
     }
 
-    func testCreateICMPPackageAllSequenceNumbers() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testCreateICMPPackageAllSequenceNumbers() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let identifier: UInt16 = UInt16.random(in: UInt16.min...UInt16.max)
         var sequenceNumber: UInt16 = 0
         for _ in 0...100 {
@@ -753,8 +753,8 @@ private class MockPingDelegate: PingDelegate {
 
 final class PingletModelTests: XCTestCase {
 
-    func testInitWithDestination() throws {
-        let dest = try Destination(host: "1.1.1.1")
+    func testInitWithDestination() async throws {
+        let dest = try await Destination(host: "1.1.1.1")
         let config = PingConfiguration(interval: 2, timeout: 10)
         let queue = DispatchQueue(label: "test.queue")
         let pinglet = try Pinglet(destination: dest, configuration: config, queue: queue)
@@ -766,8 +766,8 @@ final class PingletModelTests: XCTestCase {
         XCTAssertFalse(pinglet.runInBackground)
     }
 
-    func testInitDefaults() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testInitDefaults() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         XCTAssertEqual(pinglet.configuration.pingInterval, 1)
         XCTAssertEqual(pinglet.configuration.timeoutInterval, 5)
         XCTAssertNil(pinglet.targetCount)
@@ -782,31 +782,31 @@ final class PingletModelTests: XCTestCase {
         XCTAssertEqual(pinglet.destination.ip, "127.0.0.1")
     }
 
-    func testConvenienceInitResolvesHost() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testConvenienceInitResolvesHost() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         XCTAssertEqual(pinglet.destination.host, "1.1.1.1")
         XCTAssertEqual(pinglet.destination.ip, "1.1.1.1")
     }
 
-    func testTargetCountProperty() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testTargetCountProperty() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         XCTAssertNil(pinglet.targetCount)
         pinglet.targetCount = 5
         XCTAssertEqual(pinglet.targetCount, 5)
     }
 
-    func testPublishedResponsesStartsEmpty() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testPublishedResponsesStartsEmpty() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         XCTAssertTrue(pinglet.responses.isEmpty)
     }
 
-    func testCurrentCountStartsZero() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testCurrentCountStartsZero() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         XCTAssertEqual(pinglet.currentCount, 0)
     }
 
-    func testObservationClosures() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testObservationClosures() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
 
         let requestExpectation = XCTestExpectation()
         pinglet.requestObserver = { _, _ in requestExpectation.fulfill() }
@@ -822,8 +822,8 @@ final class PingletModelTests: XCTestCase {
         XCTAssertNotNil(pinglet.finished)
     }
 
-    func testRequestPublisher() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testRequestPublisher() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         var received: [PingRequest] = []
         let expectation = XCTestExpectation()
 
@@ -841,8 +841,8 @@ final class PingletModelTests: XCTestCase {
         cancellable.cancel()
     }
 
-    func testResponsePublisher() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testResponsePublisher() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         var received: [PingResponse] = []
         let expectation = XCTestExpectation()
 
@@ -858,7 +858,7 @@ final class PingletModelTests: XCTestCase {
     }
 
     func testResponsePublisherWithData() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+        let pinglet = try Pinglet(ipv4Address: "1.1.1.1")
         var receivedResponse: PingResponse?
         let expectation = XCTestExpectation()
 
@@ -891,8 +891,8 @@ final class PingletModelTests: XCTestCase {
         cancellable.cancel()
     }
 
-    func testPendingRequestManagement() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testPendingRequestManagement() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let request = PingRequest(identifier: 1, ipAddress: "1.1.1.1", sequenceIndex: 5, trueSequenceIndex: 5)
         pinglet.pendingRequests.append(request)
 
@@ -904,8 +904,8 @@ final class PingletModelTests: XCTestCase {
         XCTAssertNil(notFound)
     }
 
-    func testCompleteRequestRemovesPending() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testCompleteRequestRemovesPending() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let request = PingRequest(identifier: 1, ipAddress: "1.1.1.1", sequenceIndex: 3, trueSequenceIndex: 3)
         pinglet.pendingRequests.append(request)
 
@@ -917,8 +917,8 @@ final class PingletModelTests: XCTestCase {
         XCTAssertNil(found)
     }
 
-    func testInformObserversAppendsResponse() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testInformObserversAppendsResponse() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let request = PingRequest(identifier: pinglet.identifier, ipAddress: "1.1.1.1", sequenceIndex: 0, trueSequenceIndex: 0)
         pinglet.pendingRequests.append(request)
 
@@ -940,8 +940,8 @@ final class PingletModelTests: XCTestCase {
         XCTAssertEqual(pinglet.responses.first?.duration, 0.015)
     }
 
-    func testInformObserversTimeout() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testInformObserversTimeout() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let request = PingRequest(identifier: pinglet.identifier, ipAddress: "1.1.1.1", sequenceIndex: 0, trueSequenceIndex: 0)
         pinglet.pendingRequests.append(request)
 
@@ -960,18 +960,18 @@ final class PingletModelTests: XCTestCase {
         }
     }
 
-    func testPingletDeinitDoesNotCrash() throws {
-        let _: Pinglet? = try Pinglet(host: "1.1.1.1")
+    func testPingletDeinitDoesNotCrash() async throws {
+        let _: Pinglet? = try await Pinglet(host: "1.1.1.1")
     }
 
-    func testPingletSequenceAndTrueSequenceAreSynchronized() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testPingletSequenceAndTrueSequenceAreSynchronized() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         XCTAssertEqual(pinglet.currentCount, 0)
     }
 
     func testPingletResponseObserverQueue() throws {
         let expectation = XCTestExpectation()
-        let pinglet = try Pinglet(host: "1.1.1.1", queue: DispatchQueue.global())
+        let pinglet = try Pinglet(ipv4Address: "1.1.1.1", queue: DispatchQueue.global())
 
         let request = PingRequest(identifier: pinglet.identifier, ipAddress: "1.1.1.1", sequenceIndex: 0, trueSequenceIndex: 0)
         pinglet.pendingRequests.append(request)
@@ -996,7 +996,7 @@ final class PingletModelTests: XCTestCase {
 
     func testPingletDelegateWiredCorrectly() throws {
         let delegate = MockPingDelegate()
-        let pinglet = try Pinglet(host: "1.1.1.1")
+        let pinglet = try Pinglet(ipv4Address: "1.1.1.1")
         pinglet.delegate = delegate
 
         let request = PingRequest(identifier: pinglet.identifier, ipAddress: "1.1.1.1", sequenceIndex: 0, trueSequenceIndex: 0)
@@ -1058,8 +1058,8 @@ final class PingletReceivePathTests: XCTestCase {
     /// Regression guard for the offset bug (findings 2/3): a full IP-header + ICMP
     /// echo reply must validate. Under the old `ICMPHeader.from(data:)` (offset 0)
     /// the IP header was parsed as the ICMP header, so this threw / failed.
-    func testValidateResponseAcceptsEchoReply() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testValidateResponseAcceptsEchoReply() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let sequence: UInt16 = 5
 
         let icmp = try makeEchoReply(for: pinglet, sequence: sequence)
@@ -1076,8 +1076,8 @@ final class PingletReceivePathTests: XCTestCase {
     /// A reply carrying a different fingerprint belongs to another session and must
     /// be ignored (returns false, not a throw). The fingerprint check runs before
     /// the checksum check, so flipping one payload byte is enough to trigger it.
-    func testValidateResponseRejectsForeignFingerprint() throws {
-        let pinglet = try Pinglet(host: "1.1.1.1")
+    func testValidateResponseRejectsForeignFingerprint() async throws {
+        let pinglet = try await Pinglet(host: "1.1.1.1")
         let sequence: UInt16 = 5
 
         var icmp = [UInt8](try makeEchoReply(for: pinglet, sequence: sequence))
@@ -1111,3 +1111,4 @@ final class PingletReceivePathTests: XCTestCase {
         XCTAssertEqual(header.headerChecksum, 0xABCD)        // network order
     }
 }
+

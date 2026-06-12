@@ -44,8 +44,8 @@ final class PingletTests: XCTestCase {
 
     static func defaultPinglet() throws -> Pinglet {
         let config = PingConfiguration(interval: 1, timeout: 3)
-        let ping = try Pinglet(host: "1.1.1.1",
-                               configuration: config,
+        let ping = try Pinglet(ipv4Address: "1.1.1.1",
+                               config: config,
                                queue: DispatchQueue.global(qos: .background))
         ping.runInBackground = true
         #if os(iOS)
@@ -312,8 +312,8 @@ class Pinger {
         stop()
         if pinglet == nil {
             print("ping init !!")
-            pinglet = try? Pinglet(host: "8.8.8.8",
-                                   configuration: PingConfiguration(interval: 0.1),
+            pinglet = try? Pinglet(ipv4Address: "8.8.8.8",
+                                   config: PingConfiguration(interval: 0.1),
                                    queue: DispatchQueue.global())
         }
         pinglet?.runInBackground = true

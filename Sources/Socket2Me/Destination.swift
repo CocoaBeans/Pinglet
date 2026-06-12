@@ -41,14 +41,77 @@ public struct Destination {
         self.host = host
         self.ipv4Address = ipv4Address
     }
-    
-    public init(host: String) throws {
-        self.host = host
-        self.ipv4Address = try Destination.getIPv4AddressFromHost(host: host)
+
+    /// Initializes a `Destination` from a literal IPv4 address string, building the
+    /// socket address directly. Unlike `init(host:)`, this performs no DNS resolution
+    /// and therefore never blocks or fails.
+    /// - Parameter ipv4Address: A dotted-decimal IPv4 address (e.g. `"1.1.1.1"`).
+    public init(ipv4Address: String) {
+        var socketAddress = sockaddr_in()
+        socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        socketAddress.sin_family = UInt8(AF_INET)
+        socketAddress.sin_port = 0
+        socketAddress.sin_addr.s_addr = inet_addr(ipv4Address.cString(using: .utf8))
+        self.host = ipv4Address
+        self.ipv4Address = Data(bytes: &socketAddress, count: MemoryLayout<sockaddr_in>.size)
     }
 
-    /// Resolves the `host`.
+    @available(*, deprecated, message: "Blocking DNS resolution. Use 'init(host:) async throws' instead.")
+    public init(host: String) throws {
+        self.host = host
+        self.ipv4Address = try Destination.performBlockingResolution(host: host)
+    }
+
+    /// Asynchronously resolves the given `host` and creates a `Destination`.
+    ///
+    /// DNS resolution runs off the calling task (see `resolve(host:)`), so awaiting this
+    /// initializer never blocks the caller's thread.
+    /// - Parameter host: A host name or IPv4 address string.
+    /// - Throws: A `SocketError` if the host could not be resolved.
+    public init(host: String) async throws {
+        self.host = host
+        self.ipv4Address = try await Destination.resolve(host: host)
+    }
+
+    /// A dedicated queue for the blocking `CFHost` resolution.
+    ///
+    /// Running resolution here — rather than on the Swift concurrency cooperative pool —
+    /// guarantees a slow DNS lookup can never starve the shared executor. It is concurrent
+    /// so independent lookups don't serialize behind one another.
+    private static let resolutionQueue = DispatchQueue(label: "Pinglet.Destination.dnsResolution",
+                                                       qos: .userInitiated,
+                                                       attributes: .concurrent)
+
+    /// Asynchronously resolves `host` to its IPv4 socket-address bytes.
+    ///
+    /// This bridges the blocking `getIPv4AddressFromHost(host:)` resolution onto a dedicated
+    /// queue via a checked continuation, so neither the awaiting task nor a cooperative
+    /// concurrency thread is blocked while the lookup is in flight.
+    /// - Parameter host: A host name or IPv4 address string.
+    /// - Returns: The `Data` wrapping the resolved `sockaddr_in`.
+    /// - Throws: A `SocketError` if the host could not be resolved.
+    public static func resolve(host: String) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            resolutionQueue.async {
+                do {
+                    continuation.resume(returning: try performBlockingResolution(host: host))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Resolves the `host`. This call blocks the current thread until resolution completes;
+    /// prefer the asynchronous `resolve(host:)` from concurrency contexts.
+    @available(*, deprecated, message: "Blocking DNS resolution. Use 'resolve(host:) async throws' instead.")
     public static func getIPv4AddressFromHost(host: String) throws -> Data {
+        try performBlockingResolution(host: host)
+    }
+
+    /// The synchronous `CFHost` resolution core shared by the blocking entry point
+    /// (`getIPv4AddressFromHost(host:)`) and the asynchronous `resolve(host:)`.
+    private static func performBlockingResolution(host: String) throws -> Data {
         var streamError = CFStreamError()
         let cfhost: CFHost = CFHostCreateWithName(nil, host as CFString).takeRetainedValue()
         let status: Bool = CFHostStartInfoResolution(cfhost, .addresses, &streamError)
