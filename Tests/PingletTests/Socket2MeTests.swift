@@ -233,7 +233,7 @@ final class Socket2MeTests: XCTestCase {
 
     @discardableResult
     func createSocket() throws -> Socket2Me {
-        let socket = Socket2Me(destination: Destination(ipv4Address: "1.1.1.1"))
+        let socket = Socket2Me(destination: Destination(ipv4String: "1.1.1.1"))
 
         let openTimeout = Date().addingTimeInterval(5)
         while socket.isOpening, Date() < openTimeout {
