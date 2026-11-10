@@ -64,7 +64,3 @@ public enum SocketError: Error, Equatable {
     case socketOptionsSetError(errorCode: Int32)
 }
 
-
-extension String: LocalizedError {
-    public var errorDescription: String? { self }
-}

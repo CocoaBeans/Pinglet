@@ -26,17 +26,23 @@ import Foundation
 
 extension Pinglet {
     internal func validateResponse(from data: Data) throws -> Bool {
-        guard data.count >= MemoryLayout<ICMPHeader>.size + MemoryLayout<IPHeader>.size else {
+        guard data.count >= ICMPHeader.totalSize + IPHeader.minSize else {
             throw PingError.invalidLength(received: data.count)
         }
 
         guard let headerOffset = ICMPHeader.headerOffset(in: data) else { throw PingError.invalidHeaderOffset }
-        let payloadSize = data.count - headerOffset - MemoryLayout<ICMPHeader>.size
+        let payloadSize = data.count - headerOffset - ICMPHeader.totalSize
 
-        let icmpHeader: ICMPHeader = try ICMPHeader.from(data: data)
+        let icmpHeader: ICMPHeader = try ICMPHeader.from(data: data, offset: headerOffset)
         let payload: Data = data.subdata(in: (data.count - payloadSize) ..< data.count)
 
-        let uuid = UUID(uuid: icmpHeader.payload)
+        let payloadBytes = icmpHeader.payload
+        let uuid = UUID(uuid: (
+            payloadBytes[0], payloadBytes[1], payloadBytes[2], payloadBytes[3],
+            payloadBytes[4], payloadBytes[5], payloadBytes[6], payloadBytes[7],
+            payloadBytes[8], payloadBytes[9], payloadBytes[10], payloadBytes[11],
+            payloadBytes[12], payloadBytes[13], payloadBytes[14], payloadBytes[15]
+        ))
         guard uuid == fingerprint else {
             // Wrong handler, ignore this response
             return false
@@ -53,10 +59,10 @@ extension Pinglet {
         guard icmpHeader.code == 0 else {
             throw PingError.invalidCode(received: icmpHeader.code)
         }
-        guard CFSwapInt16BigToHost(icmpHeader.identifier) == identifier else {
+        guard icmpHeader.identifier == identifier else {
             throw PingError.identifierMismatch(received: icmpHeader.identifier, expected: identifier)
         }
-        let sequenceNumberUInt16 = CFSwapInt16BigToHost(icmpHeader.sequenceNumber)
+        let sequenceNumberUInt16 = icmpHeader.sequenceNumber
         let receivedSequenceIndex = Int(sequenceNumberUInt16)
         guard pendingRequest(for: receivedSequenceIndex) != nil else {
             if erroredIndices.contains(receivedSequenceIndex) {
