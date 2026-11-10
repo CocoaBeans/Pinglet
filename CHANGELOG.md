@@ -5,7 +5,7 @@ All notable changes to **Pinglet** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] — Unreleased
+## [2.0.0] — 2026-11-10
 
 This release modernizes host resolution with Swift Concurrency, hardens the
 ICMP/IP receive path, and tidies the public API. It contains **breaking
