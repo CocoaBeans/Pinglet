@@ -29,6 +29,9 @@ changes** — see below before upgrading.
 - **`IPHeader` stored properties are now `let` instead of `var`.** All parsed
   header fields (`totalLength`, `timeToLive`, `protocol`, `sourceAddress`, …)
   are read-only. Breaks code that mutated a parsed header.
+- **`Socket2Me.destination` is now `let`.** Each socket is connected to its
+  destination (see Changed), so the destination is fixed for the socket's lifetime.
+  Create a new `Pinglet` to ping a different host.
 - **Removed the retroactive `extension String: LocalizedError`.** If you relied
   on `String` conforming to `LocalizedError` (a global conformance Pinglet
   previously added), that is gone.
@@ -59,6 +62,16 @@ changes** — see below before upgrading.
 - ICMP and IP headers are now parsed with **safe manual byte parsing** instead
   of unsafe pointer loads (`withUnsafeBytes` / `load(as:)`), removing struct
   memory-layout and padding assumptions.
+- **The ICMP socket is now connected to its destination** (`CFSocketConnectToAddress`).
+  For a datagram socket this sends nothing; it fixes the peer, so the kernel delivers
+  only that host's replies, and sends go out without an address. In the macOS App
+  Sandbox, replies on an unconnected socket count as inbound traffic and need the
+  `com.apple.security.network.server` entitlement, which App Review rejects for apps
+  that don't run a server; a connected socket needs only
+  `com.apple.security.network.client`. If connecting fails (e.g. no route yet), the
+  socket stays unconnected and sends with an explicit address, as before. A connected
+  socket only hears from its destination, so ICMP replies from intermediate routers
+  (traceroute-style TTL probing) are not received.
 - `Pinglet.init(ipv4Address:)` now delegates to `Destination.init(ipv4String:)`,
   removing duplicated `sockaddr_in` construction. Its public signature is
   unchanged.
@@ -81,5 +94,7 @@ the async equivalents above. They still work but emit deprecation warnings:
   `ip_off` are decoded in host order while `ip_id` / `ip_sum` remain network
   order, matching the raw-socket convention.
 - Flaky `testStopViaTimer` caused by a dual-timer race condition.
+- Sandboxed macOS apps no longer need `com.apple.security.network.server` to
+  receive echo replies (see the connected socket under Changed).
 
 [2.0.0]: https://github.com/CocoaBeans/Pinglet/compare/v1.0.8...v2.0.0

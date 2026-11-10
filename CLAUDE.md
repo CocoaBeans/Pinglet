@@ -29,7 +29,7 @@ No linter or formatter is configured at the SPM level. The project uses [swiftfo
 The package has three targets:
 
 ### `Socket2Me` (low-level networking)
-- **`Socket2Me.swift`** — Core `CFSocket` wrapper class. Creates ICMP datagram sockets (optionally in a detached background thread), handles read/write via Combine publishers (`dataReceivedPublisher`, `dataSentPublisher`), and manages the run loop. All low-level socket callbacks flow through here.
+- **`Socket2Me.swift`** — Core `CFSocket` wrapper class. Creates ICMP datagram sockets **connected to their destination** (so sandboxed macOS apps need only `network.client`; falls back to unconnected sends if connect fails) (optionally in a detached background thread), handles read/write via Combine publishers (`dataReceivedPublisher`, `dataSentPublisher`), and manages the run loop. All low-level socket callbacks flow through here.
 - **`Destination.swift`** — Hostname-to-IP resolution via `CFHost`. Wraps `sockaddr_in` addresses.
 - **`SocketError.swift`** — Error types for socket-level failures (DNS, connectivity, SIGPIPE).
 - **`Data+Networking.swift`** — Extensions to convert `Data` to `sockaddr` / `sockaddr_in`.

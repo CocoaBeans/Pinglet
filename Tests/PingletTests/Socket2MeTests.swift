@@ -67,6 +67,17 @@ final class Socket2MeTests: XCTestCase {
 
     // MARK: - Configuration
 
+    func testSocketIsConnectedToDestination() throws {
+        // Connected sockets only receive their peer's replies and need just the macOS sandbox's
+        // network.client entitlement, not network.server.
+        let socket = try createSocket()
+        let peer = try XCTUnwrap(socket.peerAddress)
+        let destination = socket.destination.ipv4Address
+        // Compare the IPv4 address bytes of the two sockaddr_in values (sin_addr at offset 4).
+        XCTAssertEqual(peer.subdata(in: 4 ..< 8), destination.subdata(in: 4 ..< 8))
+        socket.tearDown()
+    }
+
     func testSettingTimeToLive() throws {
         let socket = try createSocket()
         socket.timeToLive = 64

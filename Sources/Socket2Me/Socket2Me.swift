@@ -38,7 +38,9 @@ public class SocketInfo {
 }
 
 public class Socket2Me: NSObject, ObservableObject {
-    public var destination: Destination
+    /// The single host this socket exchanges ICMP with. The socket is connected to it (see
+    /// `_openNetworkSocket()`), so it is fixed for the socket's lifetime.
+    public let destination: Destination
     public var timeout: TimeInterval = 30
 
     public private (set) var isOpen: Bool = false
@@ -57,6 +59,16 @@ public class Socket2Me: NSObject, ObservableObject {
     public var runLoop: CFRunLoop?
     /// Socket for sending and receiving data.
     private var socket: CFSocket?
+
+    /// Whether the socket is connected to `destination`. Connected sockets send without an
+    /// address; if connecting failed (e.g. no route yet), sends carry the address as before.
+    private var isConnected = false
+
+    /// The connected peer address, or nil when the socket isn't connected. For tests.
+    var peerAddress: Data? {
+        guard let socket else { return nil }
+        return CFSocketCopyPeerAddress(socket) as Data?
+    }
     /// Socket source
     private var socketSource: CFRunLoopSource?
     /// An unmanaged instance of `SocketInfo` used in the current socket's callback. This must be released manually, otherwise it will leak.
@@ -161,6 +173,18 @@ public class Socket2Me: NSObject, ObservableObject {
                 try emitSocketError(code: err)
                 return
             }
+        }
+
+        // Connect to the one destination. For a datagram socket this sends nothing: it fixes the
+        // peer, so the kernel delivers only that host's replies, and the macOS App Sandbox treats
+        // them as part of an outgoing exchange (`network.client`) rather than inbound traffic that
+        // would require `network.server`. If connecting fails (e.g. no route at this moment), keep
+        // the socket unconnected and send with an explicit address, as before, so pings still
+        // time out normally instead of the socket failing to open.
+        let connectResult: CFSocketError = CFSocketConnectToAddress(socket, destination.ipv4Address as CFData, timeout)
+        isConnected = CFSocketError.success == connectResult
+        if !isConnected {
+            Log.socket.error("Socket2Me: connect failed (\(connectResult.rawValue)); sending unconnected")
         }
 
         // ...and add it to the current run loop.
@@ -279,8 +303,10 @@ public extension Socket2Me {
                     return
                 }
 
+                // A connected socket already has its peer: sendto() with an address on a connected
+                // datagram socket fails with EISCONN, so pass none.
                 let socketError: CFSocketError = CFSocketSendData(socket,
-                                                                  address as CFData,
+                                                                  self.isConnected ? nil : address as CFData,
                                                                   data as CFData,
                                                                   self.timeout)
                 if socketError != .success {
